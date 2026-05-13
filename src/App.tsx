@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Mic, Square, Loader2, Settings, Copy, Check, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { Mic, Square, Loader2, Settings, Copy, Check, ChevronDown, ChevronUp, Activity, HardDriveDownload } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -7,7 +7,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const DEFAULT_PROMPT = `Ты расшифровщик и корректор текста. Твоя специализация - транскрипт аудиофайлов, вычитка, очистка, оптимизация разговорной речи, полученных от пользователя. Твои задачи:
 
 ## Исправить ошибки распознавания.
-- исправить неправильно определенные границы предложений, руководствуясь логикой текста.
+- исправить границы предложений, руководствуясь логикой текста.
 - исправить ошибки в распознавании слов, эвристически, руководствуясь логикой текста.
 - исправить пунктуацию, орфографию, согласовать падежи.
 - поставить вопросительные знаки (?) в конце вопросительных предложений
@@ -15,18 +15,17 @@ const DEFAULT_PROMPT = `Ты расшифровщик и корректор те
 - заменить цифры словами, по смыслу например вместо "1" может быть "первый", "один", "одного", "раз" и т.д. (а даты наоборот перевести в цифры).
 
 ## Очистить смысл от словесного мусора (если он есть)
-- Удалить слова и обороты, исчезновение которых никак не меняет смысл сказанного, такие как: "как бы", "ну", "собственно", "какой-то", "некий" а также их сочетаний.
-- Удалить технические вставки.
+- Удалить слова и обороты, исчезновение которых никак не меняет смысл сказанного, такие как: "как бы", "ну", "собственно", "какой-то", "некий" а также их сочетаний. Например: предложение «Ну и вот, собственно, я как бы это пришел домой» можно превратить в  «И вот, я пришел домой». 
 
 ## Разметить структуру текста:
 - разбить длинные предложения на короткие
 - разбить сплошной текст на короткие абзацы, (3-5 предложений) руководствуясь логикой текста.
 - если логичная длина абзацев получается более 6 предложений, делай разбивку через союз "И" в начале первого предложения следующего абзаца
-- разбить текст на смысловые блоки и создать к ним заголовки H3.
-- если в тексте есть диалог, обозначай имена, если имена не называются в тексте, подпиши «Участник:».
+- Если в тексте более 5 абзацев и есть логические части - разбить текст на смысловые блоки и создать к ним заголовки H3.
 
 !IMPORTANT! Ты сохраняешь полное содержание исходного текста, включая диалоги и тексты управляемых медитаций. Ты никогда не редактируешь и не корректируешь смыслы, лишь слегка оптимизируешь их изложение.
-!IMPORTANT! При оптимизации текста сохраняй оригинальный тон и стиль. Избегай замены разрешающих формулировок конструкциями в повелительном наклонении.
+
+!IMPORTANT! При оптимизации текста сохраняй оригинальный тон и стиль.  Например, при расшифровке аудио-практик, избегай замены  разрешающих формулировок, таких как «можно», «и может быть» - конструкцями в повелительном наклонении, прямыми командами или повествованием от первого лица. Например, не надо заменять "И можно начать мягко раскачивать дыхание" на повелительное "Начните раскачивать дыхание". Сохраняй предполагаемый уровень взаимодействия говорящего с аудиторией.
 
 Ты возвращаешь только расшифрованный текст и больше ничего.`;
 
@@ -44,6 +43,8 @@ export default function App() {
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_PROMPT);
   const [model, setModel] = useState(AVAILABLE_MODELS[0].id);
   const [showSettings, setShowSettings] = useState(false);
+  const [saveAudioLocally, setSaveAudioLocally] = useState(false);
+  const [deviceName, setDeviceName] = useState('');
   const [copied, setCopied] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -53,6 +54,11 @@ export default function App() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     if (recording) {
@@ -65,6 +71,61 @@ export default function App() {
     }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+    }
+  }, [recording]);
+
+  useEffect(() => {
+    if (recording && streamRef.current && canvasRef.current) {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const audioContext = new AudioCtx();
+      audioContextRef.current = audioContext;
+      const analyser = audioContext.createAnalyser();
+      analyserRef.current = analyser;
+
+      const source = audioContext.createMediaStreamSource(streamRef.current);
+      source.connect(analyser);
+
+      analyser.fftSize = 256;
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      const drawVisualizer = () => {
+        if (!canvasRef.current || !analyserRef.current) return;
+        const canvas = canvasRef.current;
+        const canvasCtx = canvas.getContext('2d');
+        if (!canvasCtx) return;
+
+        const WIDTH = canvas.width;
+        const HEIGHT = canvas.height;
+
+        animationFrameRef.current = requestAnimationFrame(drawVisualizer);
+
+        analyserRef.current.getByteFrequencyData(dataArray);
+
+        canvasCtx.clearRect(0, 0, WIDTH, HEIGHT);
+
+        const barWidth = (WIDTH / bufferLength) * 2.5;
+        let barHeight;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+          barHeight = dataArray[i] / 2;
+
+          canvasCtx.fillStyle = `rgb(59, 130, 246)`; // Tailwind blue-600
+          canvasCtx.fillRect(x, HEIGHT - barHeight, barWidth, barHeight);
+
+          x += barWidth + 1;
+        }
+      };
+
+      drawVisualizer();
+
+      return () => {
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+        if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+          audioContextRef.current.close().catch(console.error);
+        }
+      };
     }
   }, [recording]);
 
@@ -82,6 +143,11 @@ export default function App() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) {
+        setDeviceName(audioTrack.label || 'Неизвестный микрофон');
+      }
+      
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -97,10 +163,24 @@ export default function App() {
         const cleanMimeType = mimeType.split(';')[0]; // Simplify for Gemini
         const blob = new Blob(audioChunksRef.current, { type: cleanMimeType });
         
+        if (saveAudioLocally) {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.style.display = 'none';
+          a.href = url;
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          a.download = `VoiceFixer_${timestamp}.webm`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        }
+
         // Ensure microphone track is released completely
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => track.stop());
         }
+        setDeviceName('');
         
         if (blob.size > 0) {
           await processAudio(blob, cleanMimeType);
@@ -126,7 +206,6 @@ export default function App() {
 
   const processAudio = async (blob: Blob, mimeType: string) => {
     setProcessing(true);
-    setTranscript('');
     
     try {
       const reader = new FileReader();
@@ -159,7 +238,7 @@ export default function App() {
           });
 
           if (response.text) {
-            setTranscript(response.text);
+            setTranscript(prev => prev ? prev + '\n\n-------------------\n\n' + response.text : response.text);
           } else {
             setErrorMsg("Модель не вернула текст.");
           }
@@ -222,6 +301,23 @@ export default function App() {
           <div className="bg-slate-50 p-6 border-b border-gray-200">
             <div className="space-y-6">
               
+              <div className="flex flex-col gap-4">
+                <label className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-xl cursor-pointer hover:bg-blue-50 transition-colors">
+                  <input 
+                    type="checkbox" 
+                    checked={saveAudioLocally}
+                    onChange={(e) => setSaveAudioLocally(e.target.checked)}
+                    className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300 cursor-pointer" 
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+                      <HardDriveDownload className="w-4 h-4 text-blue-600" /> Сохранять аудио на устройство
+                    </span>
+                    <span className="text-xs text-gray-500 mt-1">После остановки записи файл автоматически скачается в папку «Загрузки»</span>
+                  </div>
+                </label>
+              </div>
+
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Модель Gemini</label>
                 <select 
@@ -274,8 +370,8 @@ export default function App() {
             )}
 
             {recording && (
-              <div className="flex flex-col items-center">
-                <div className="relative flex items-center justify-center w-24 h-24 mb-6">
+              <div className="flex flex-col items-center w-full">
+                <div className="relative flex items-center justify-center w-24 h-24 mb-8">
                   {/* Pulse effect */}
                   <div className="absolute inset-0 bg-red-500 rounded-full animate-ping opacity-30"></div>
                   
@@ -286,10 +382,27 @@ export default function App() {
                     <Square className="w-8 h-8 fill-current" />
                   </button>
                 </div>
-                <div className="text-3xl font-mono text-red-500 font-semibold tabular-nums tracking-wider">
+                
+                {/* Visualizer and Device info */}
+                <div className="flex flex-col items-center bg-gray-50 px-6 py-4 rounded-2xl border border-gray-200 shadow-inner w-full max-w-sm mb-6">
+                  <div className="flex items-center gap-2 mb-3 text-gray-600">
+                    <Activity className="w-4 h-4 stroke-[2.5]" />
+                    <span className="text-xs font-semibold truncate max-w-[200px]" title={deviceName}>
+                      {deviceName || 'Определение микрофона...'}
+                    </span>
+                  </div>
+                  <canvas 
+                    ref={canvasRef} 
+                    width="280" 
+                    height="60" 
+                    className="w-full h-[60px] opacity-80"
+                  />
+                </div>
+
+                <div className="text-4xl font-mono text-gray-900 font-semibold tabular-nums tracking-wider text-center">
                   {formatTime(recordingTime)}
                 </div>
-                <div className="text-sm font-medium text-gray-500 mt-2">Идет запись... Нажмите квадрат, чтобы остановить</div>
+                <div className="text-sm font-medium text-gray-500 mt-3">Нажмите квадрат, чтобы остановить</div>
               </div>
             )}
 
@@ -318,13 +431,21 @@ export default function App() {
             <div className="mt-6 flex flex-col flex-1 animate-in slide-in-from-bottom-4 duration-500">
               <div className="flex justify-between items-center mb-3">
                 <h3 className="text-lg font-semibold text-gray-900">Готовый Текст</h3>
-                <button 
-                  onClick={copyToClipboard}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors"
-                >
-                  {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-                  {copied ? <span className="text-green-600">Скопировано</span> : <span>В буфер</span>}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setTranscript('')}
+                    className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium rounded-lg transition-colors"
+                  >
+                    Очистить
+                  </button>
+                  <button 
+                    onClick={copyToClipboard}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors"
+                  >
+                    {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                    {copied ? <span className="text-green-600">Скопировано</span> : <span>В буфер</span>}
+                  </button>
+                </div>
               </div>
               <textarea 
                 className="w-full flex-1 min-h-[300px] p-4 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 text-base leading-relaxed focus:ring-2 focus:ring-blue-500 focus:bg-white resize-none outline-none transition-all"
