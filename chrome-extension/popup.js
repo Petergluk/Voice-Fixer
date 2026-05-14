@@ -134,8 +134,7 @@ function visualize(stream) {
     drawVisual = requestAnimationFrame(draw);
     analyser.getByteFrequencyData(dataArray);
 
-    canvasCtx.fillStyle = '#f9fafb'; // background
-    canvasCtx.fillRect(0, 0, visualizer.offsetWidth, visualizer.offsetHeight);
+    canvasCtx.clearRect(0, 0, visualizer.offsetWidth, visualizer.offsetHeight);
 
     const barWidth = (visualizer.offsetWidth / bufferLength) * 2.5;
     let barHeight;
@@ -143,7 +142,7 @@ function visualize(stream) {
 
     for(let i = 0; i < bufferLength; i++) {
       barHeight = (dataArray[i] / 255) * visualizer.offsetHeight;
-      canvasCtx.fillStyle = '#ef4444'; // red bars
+      canvasCtx.fillStyle = '#f97316'; // orange bars
       canvasCtx.fillRect(x, visualizer.offsetHeight - barHeight, barWidth, barHeight);
       x += barWidth + 1;
     }
