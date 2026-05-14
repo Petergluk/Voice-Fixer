@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Загружаем сохраненные настройки
   chrome.storage.local.get({
     geminiApiKey: '',
-    geminiModel: 'gemini-1.5-flash',
+    geminiModel: 'gemini-3-flash-preview',
     systemPrompt: defaultPrompt
   }, (result) => {
     document.getElementById('apiKey').value = result.geminiApiKey;

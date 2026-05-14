@@ -39,13 +39,13 @@
     </div>
     
     <div class="field">
-      <label for="modelSelect">Модель Gemini:</label>
+      <label for="modelSelect">Модель Gemini (будет использована первой):</label>
       <select id="modelSelect">
-        <option value="gemini-1.5-flash">Gemini 1.5 Flash (Быстрая, по умолчанию)</option>
-        <option value="gemini-1.5-pro">Gemini 1.5 Pro (Более умная, но медленнее)</option>
-        <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-        <option value="gemini-2.0-flash-lite-preview-02-05">Gemini 2.0 Flash Lite</option>
+        <option value="gemini-3-flash-preview">Gemini 3 Flash Preview (Новая, по умолчанию)</option>
+        <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+        <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
       </select>
+      <div class="hint">Включен автоматический перебор: если выбранная модель не справится из-за лимитов или ошибок, запрос будет отправлен запасным моделям по цепочке.</div>
     </div>
 
     <div class="field">

@@ -100,7 +100,7 @@ async function handleAudioStop() {
 
   chrome.storage.local.get({
     geminiApiKey: '',
-    geminiModel: 'gemini-1.5-flash',
+    geminiModel: 'gemini-3-flash-preview',
     systemPrompt: `Ты расшифровщик и корректор текста. Твоя специализация - транскрипт аудиофайлов, вычитка, очистка, оптимизация расшифровок разговорной речи. 
 Задачи:
 - исправить ошибки распознавания по смыслу.
@@ -121,7 +121,7 @@ async function handleAudioStop() {
     }
 
     try {
-      const text = await sendToGemini(base64Data, apiKey, model, prompt);
+      const text = await sendWithFallback(base64Data, apiKey, model, prompt);
       statusDiv.textContent = 'Успешно! Вставляем текст...';
       
       // Вставка в активную вкладку (Content Script контекст)
@@ -157,6 +157,30 @@ function blobToBase64(blob) {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+async function sendWithFallback(base64Audio, apiKey, initialModel, prompt) {
+  const fallbackModels = ['gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
+  // Создаем очередь так, чтобы выбранная модель была первой, а остальные шли за ней
+  const queue = [initialModel, ...fallbackModels.filter(m => m !== initialModel)];
+
+  let lastError;
+  for (let i = 0; i < queue.length; i++) {
+    const currentModel = queue[i];
+    try {
+      console.log(`Попытка обработки через ${currentModel}...`);
+      statusDiv.textContent = `Обработка (${currentModel})...`;
+      const text = await sendToGemini(base64Audio, apiKey, currentModel, prompt);
+      return text;
+    } catch (err) {
+      console.warn(`Ошибка при использовании ${currentModel}:`, err);
+      lastError = err;
+      if (i < queue.length - 1) {
+        statusDiv.textContent = `Ошибка ${currentModel}. Пробуем следующую...`;
+      }
+    }
+  }
+  throw lastError; // Если все упали, кидаем последнюю ошибку
 }
 
 async function sendToGemini(base64Audio, apiKey, modelName, prompt) {
