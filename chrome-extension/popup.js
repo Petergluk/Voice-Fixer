@@ -74,6 +74,7 @@ async function startRecording() {
     // Обновляем UI
     controlsStart.style.display = 'none';
     controlsRecording.style.display = 'flex';
+    settingsLink.style.display = 'none';
     statusDiv.textContent = 'Идет запись... Говорите. Не закрывайте окно.';
     
     startTime = Date.now();
@@ -115,6 +116,7 @@ function stopRecording() {
     recording = false;
     controlsStart.style.display = 'block';
     controlsRecording.style.display = 'none';
+    settingsLink.style.display = 'block';
     clearInterval(timerInterval);
     timerDiv.style.display = 'none';
   }
