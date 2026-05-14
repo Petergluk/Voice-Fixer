@@ -1,0 +1,187 @@
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'PROCESS_AUDIO') {
+    processAudioInBackground(request.audioBase64, request.tabId);
+    sendResponse({ status: "started" });
+  }
+});
+
+async function processAudioInBackground(base64Audio, tabId) {
+  try {
+    // Уведомляем пользователя на странице, что процесс пошел в фоне
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: showToast,
+      args: ['🎙️ Voice Fixer: Обрабатываем аудио...', false]
+    });
+
+    const result = await chrome.storage.local.get({
+      geminiApiKey: '',
+      geminiModel: 'gemini-3-flash-preview',
+      systemPrompt: `Ты расшифровщик и корректор текста. Твоя специализация - транскрипт аудиофайлов, вычитка, очистка, оптимизация расшифровок разговорной речи. 
+Задачи:
+- исправить ошибки распознавания по смыслу.
+- расставить знаки препинания, орфографию.
+- убрать слова-паразиты.
+- разбить длинные предложения и абзацы для читабельности.
+Выведи ТОЛЬКО конечный чистый текст. Никаких префиксов вроде "Вот текст:" не нужно.`
+    });
+
+    if (!result.geminiApiKey) {
+      throw new Error('API ключ не задан. Зайдите в настройки расширения.');
+    }
+
+    // Вызываем модель (вместе с резервными)
+    const text = await sendWithFallback(base64Audio, result.geminiApiKey, result.geminiModel, result.systemPrompt);
+
+    // Вставляем результат
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: insertTextIntoActiveElement,
+      args: [text]
+    });
+
+  } catch (err) {
+    console.error("Voice Fixer Background Error:", err);
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: showToast,
+      args: [`❌ Ошибка Voice Fixer: ${err.message}`, true]
+    });
+  }
+}
+
+// Отправка с fallback перебором
+async function sendWithFallback(base64Audio, apiKey, initialModel, prompt) {
+  const fallbackModels = ['gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
+  // Формируем очередь, ставя первую выбранную, затем остальные
+  const queue = [initialModel, ...fallbackModels.filter(m => m !== initialModel)];
+
+  let lastError;
+  for (let i = 0; i < queue.length; i++) {
+    const currentModel = queue[i];
+    try {
+      console.log(`Попытка обработки через ${currentModel}...`);
+      const text = await sendToGemini(base64Audio, apiKey, currentModel, prompt);
+      return text;
+    } catch (err) {
+      console.warn(`Ошибка при использовании ${currentModel}:`, err);
+      lastError = err;
+    }
+  }
+  throw lastError; // Если все упали
+}
+
+// Запрос в Gemini
+async function sendToGemini(base64Audio, apiKey, modelName, prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+  const payload = {
+    contents: [
+      { parts: [{ text: prompt }, { inlineData: { mimeType: 'audio/webm', data: base64Audio } }] }
+    ],
+    generationConfig: { temperature: 0.2 }
+  };
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error?.message || 'Ошибка API');
+  }
+
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+}
+
+// --- Функции, выполняемые на удаленной странице ---
+function showToast(message, isError) {
+  let div = document.getElementById('voice-fixer-toast');
+  if (!div) {
+    div = document.createElement('div');
+    div.id = 'voice-fixer-toast';
+    div.style.position = 'fixed';
+    div.style.bottom = '20px';
+    div.style.right = '20px';
+    div.style.padding = '12px 20px';
+    div.style.borderRadius = '8px';
+    div.style.zIndex = '9999999';
+    div.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    div.style.fontSize = '14px';
+    div.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+    div.style.transition = 'opacity 0.3s';
+    document.body.appendChild(div);
+  }
+  div.style.background = isError ? '#dc2626' : '#16a34a';
+  div.style.color = 'white';
+  div.textContent = message;
+  div.style.opacity = '1';
+
+  clearTimeout(window.vfToastTimeout);
+  window.vfToastTimeout = setTimeout(() => {
+    div.style.opacity = '0';
+    setTimeout(() => div.remove(), 300);
+  }, isError ? 5000 : 3000);
+}
+
+function insertTextIntoActiveElement(text) {
+  const toast = (msg) => {
+    let div = document.getElementById('voice-fixer-toast');
+    if (!div) {
+      div = document.createElement('div');
+      div.id = 'voice-fixer-toast';
+      div.style.position = 'fixed'; div.style.bottom = '20px'; div.style.right = '20px';
+      div.style.padding = '12px 20px'; div.style.borderRadius = '8px'; div.style.zIndex = '9999999';
+      div.style.fontFamily = 'sans-serif'; div.style.fontSize = '14px'; div.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+      div.style.transition = 'opacity 0.3s';
+      document.body.appendChild(div);
+    }
+    div.style.background = '#16a34a'; div.style.color = 'white'; div.textContent = msg; div.style.opacity = '1';
+    clearTimeout(window.vfToastTimeout);
+    window.vfToastTimeout = setTimeout(() => { div.style.opacity = '0'; setTimeout(() => div.remove(), 300); }, 3000);
+  };
+
+  const el = document.activeElement;
+  if (!el || el === document.body) {
+    navigator.clipboard.writeText(text).then(() => {
+      toast('Текст скопирован в буфер обмена (т.к. вы не выделили поле ввода).');
+    });
+    return;
+  }
+
+  // Если это стандартный инпут или текстарея
+  if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+    const start = el.selectionStart || 0;
+    const end = el.selectionEnd || 0;
+    const value = el.value;
+    const textToInsert = (start > 0 && value[start - 1] !== ' ') ? ' ' + text : text;
+    
+    el.value = value.slice(0, start) + textToInsert + value.slice(end);
+    el.selectionStart = el.selectionEnd = start + textToInsert.length;
+    
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    toast('✅ Текст вставлен!');
+  } 
+  // Если это ContentEditable область
+  else if (el.isContentEditable) {
+    el.focus();
+    const selection = window.getSelection();
+    if (selection.rangeCount > 0) {
+      selection.deleteFromDocument();
+      const textNode = document.createTextNode(text);
+      selection.getRangeAt(0).insertNode(textNode);
+      selection.getRangeAt(0).setStartAfter(textNode);
+      selection.getRangeAt(0).setEndAfter(textNode);
+      selection.collapseToEnd();
+    }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    toast('✅ Текст вставлен в редактор!');
+  } else {
+    navigator.clipboard.writeText(text).then(() => {
+      toast('Текст скопирован в буфер обмена!');
+    });
+  }
+}

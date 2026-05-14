@@ -12,6 +12,9 @@
     "default_popup": "popup.html",
     "default_title": "Voice Fixer"
   },
+  "background": {
+    "service_worker": "background.js"
+  },
   "options_page": "options.html",
   "commands": {
     "_execute_action": {

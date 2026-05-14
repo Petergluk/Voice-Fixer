@@ -71,7 +71,11 @@
   <h3><span style="font-size: 18px">🎙️</span> Voice Fixer</h3>
   
   <div id="timer">00:00</div>
-  <button id="recordBtn">Начать запись</button>
+  
+  <div style="display: flex; gap: 8px; width: 100%; margin-bottom: 12px;">
+    <button id="recordBtn" style="flex: 1; margin-bottom: 0;">Начать запись</button>
+    <button id="cancelBtn" style="display: none; background-color: #6b7280; color: white; border: none; border-radius: 8px; cursor: pointer; padding: 12px; font-size: 14px; font-weight: 500;" title="Отменить запись (Esc)">✕ Отмена</button>
+  </div>
   
   <div class="loader" id="loader"></div>
   <div id="status">Нажмите кнопку, чтобы начать диктовку.</div>
