@@ -4,10 +4,19 @@ let recording = false;
 let startTime;
 let timerInterval;
 
+let audioCtx;
+let analyser;
+let drawVisual;
+
 const recordBtn = document.getElementById('recordBtn');
+const stopBtn = document.getElementById('stopBtn');
 const statusDiv = document.getElementById('status');
 const settingsLink = document.getElementById('settingsLink');
 const timerDiv = document.getElementById('timer');
+const visualizer = document.getElementById('visualizer');
+const controlsStart = document.getElementById('controls-start');
+const controlsRecording = document.getElementById('controls-recording');
+
 let isCancelled = false;
 const cancelBtn = document.getElementById('cancelBtn');
 
@@ -16,11 +25,16 @@ settingsLink.addEventListener('click', () => {
   chrome.runtime.openOptionsPage();
 });
 
-  // Сохраняем обработчик для отмены
-  cancelBtn.addEventListener('click', () => {
-    isCancelled = true;
-    stopRecording();
-  });
+// Сохраняем обработчик для отмены
+cancelBtn.addEventListener('click', () => {
+  isCancelled = true;
+  stopRecording();
+});
+
+// Сохраняем обработчик для остановки
+stopBtn.addEventListener('click', () => {
+  stopRecording();
+});
 
 // Клик по кнопке записи
 recordBtn.addEventListener('click', async () => {
