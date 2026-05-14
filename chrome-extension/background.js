@@ -202,11 +202,49 @@ function showToast(message, isError, isSticky = false) {
 
 function insertTextIntoActiveElement(text) {
   // Локальная функция для обновления тоста после вставки
-  const toastDone = (msg) => {
+  const toastDone = (msg, isSticky = false) => {
     let div = document.getElementById('voice-fixer-toast');
-    if (div) {
-      div.style.background = '#16a34a'; div.style.color = 'white'; div.textContent = msg; div.style.opacity = '1';
-      clearTimeout(window.vfToastTimeout);
+    if (!div) return;
+    div.style.background = '#16a34a'; 
+    div.style.color = 'white'; 
+    div.style.opacity = '1';
+    
+    clearTimeout(window.vfToastTimeout);
+    
+    if (isSticky) {
+      div.innerHTML = `
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <span>${msg}</span>
+          <div style="display: flex; gap: 8px;">
+            <button id="vf-toast-copy-btn" style="background: white; color: #16a34a; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">Скопировать</button>
+            <button id="vf-toast-close-btn" style="background: transparent; color: white; border: none; font-size: 16px; cursor: pointer; padding: 0; line-height: 1;">✕</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('vf-toast-copy-btn').addEventListener('click', () => {
+        const copyFallback = () => {
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          document.body.appendChild(textarea);
+          textarea.select();
+          try { document.execCommand('copy'); } catch (e) {}
+          textarea.remove();
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).catch(copyFallback);
+        } else {
+          copyFallback();
+        }
+        const btn = document.getElementById('vf-toast-copy-btn');
+        btn.textContent = 'Успешно!';
+        setTimeout(() => { if (btn) btn.textContent = 'Скопировать'; }, 2000);
+      });
+      document.getElementById('vf-toast-close-btn').addEventListener('click', () => {
+        div.style.opacity = '0';
+        setTimeout(() => div.remove(), 300);
+      });
+    } else {
+      div.textContent = msg;
       window.vfToastTimeout = setTimeout(() => { div.style.opacity = '0'; setTimeout(() => div.remove(), 300); }, 3000);
     }
   };
@@ -220,15 +258,15 @@ function insertTextIntoActiveElement(text) {
       textarea.select();
       try {
         document.execCommand('copy');
-        toastDone('Текст скопирован в буфер (т.к. вы не выделили поле ввода).');
+        toastDone('Текст в буфере (фокус потерян).', true);
       } catch (e) {
-        toastDone('Не удалось скопировать текст в буфер.');
+        toastDone('Не удалось скопировать текст в буфер.', true);
       }
       textarea.remove();
     };
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(() => {
-        toastDone('Текст скопирован в буфер (т.к. вы не выделили поле ввода).');
+        toastDone('Текст в буфере (фокус потерян).', true);
       }).catch(copyFallback);
     } else {
       copyFallback();
@@ -272,15 +310,15 @@ function insertTextIntoActiveElement(text) {
       textarea.select();
       try {
         document.execCommand('copy');
-        toastDone('Текст скопирован в буфер обмена!');
+        toastDone('Текст скопирован в буфер обмена!', true);
       } catch (e) {
-        toastDone('Не удалось скопировать текст в буфер.');
+        toastDone('Не удалось скопировать текст в буфер.', true);
       }
       textarea.remove();
     };
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(() => {
-        toastDone('Текст скопирован в буфер обмена!');
+        toastDone('Текст скопирован в буфер обмена!', true);
       }).catch(copyFallback);
     } else {
       copyFallback();
