@@ -151,9 +151,26 @@ function insertTextIntoActiveElement(text) {
 
   const el = document.activeElement;
   if (!el || el === document.body) {
-    navigator.clipboard.writeText(text).then(() => {
-      toastDone('Текст скопирован в буфер обмена (т.к. вы не выделили поле ввода).');
-    });
+    const copyFallback = () => {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        toastDone('Текст скопирован в буфер (т.к. вы не выделили поле ввода).');
+      } catch (e) {
+        toastDone('Не удалось скопировать текст в буфер.');
+      }
+      textarea.remove();
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        toastDone('Текст скопирован в буфер (т.к. вы не выделили поле ввода).');
+      }).catch(copyFallback);
+    } else {
+      copyFallback();
+    }
     return;
   }
 
@@ -186,8 +203,25 @@ function insertTextIntoActiveElement(text) {
     el.dispatchEvent(new Event('input', { bubbles: true }));
     toastDone('✅ Текст вставлен в редактор!');
   } else {
-    navigator.clipboard.writeText(text).then(() => {
-      toastDone('Текст скопирован в буфер обмена!');
-    });
+    const copyFallback = () => {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        toastDone('Текст скопирован в буфер обмена!');
+      } catch (e) {
+        toastDone('Не удалось скопировать текст в буфер.');
+      }
+      textarea.remove();
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        toastDone('Текст скопирован в буфер обмена!');
+      }).catch(copyFallback);
+    } else {
+      copyFallback();
+    }
   }
 }

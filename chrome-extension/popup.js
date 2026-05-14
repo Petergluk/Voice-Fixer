@@ -129,11 +129,11 @@ function visualize(stream) {
   const bufferLength = analyser.frequencyBinCount;
   const dataArray = new Uint8Array(bufferLength);
   
+  visualizer.style.display = 'block';
   const canvasCtx = visualizer.getContext('2d');
   visualizer.width = visualizer.offsetWidth * window.devicePixelRatio;
   visualizer.height = visualizer.offsetHeight * window.devicePixelRatio;
   canvasCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
-  visualizer.style.display = 'block';
 
   function draw() {
     drawVisual = requestAnimationFrame(draw);
