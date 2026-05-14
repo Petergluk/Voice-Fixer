@@ -12,27 +12,28 @@
       display: flex; 
       flex-direction: column; 
       align-items: center; 
-      background: #ffffff;
+      background: #1e293b;
+      color: #f8fafc;
     }
-    h3 { margin: 0 0 16px 0; color: #111827; font-size: 16px; display: flex; align-items: center; gap: 8px;}
+    h3 { margin: 0 0 16px 0; color: #f8fafc; font-size: 16px; display: flex; align-items: center; gap: 8px;}
     #recordBtn {
       width: 100%; 
       padding: 12px; 
       font-size: 14px; 
       font-weight: 500;
-      background-color: #ef4444; 
+      background-color: #f97316; 
       color: white; 
       border: none; 
-      border-radius: 8px; 
+      border-radius: 5px; 
       cursor: pointer; 
       margin-bottom: 12px; 
       transition: background-color 0.2s, transform 0.1s;
     }
     #recordBtn:active { transform: scale(0.98); }
-    #recordBtn:disabled { background-color: #9ca3af; cursor: not-allowed; }
+    #recordBtn:disabled { background-color: #475569; cursor: not-allowed; }
     
     #recordBtn.recording {
-      background-color: #dc2626;
+      background-color: #ea580c;
       animation: pulse 1.5s infinite ease-in-out;
     }
     @keyframes pulse {
@@ -41,18 +42,18 @@
       100% { opacity: 1; transform: scale(1); }
     }
     
-    #status { font-size: 12px; color: #4b5563; text-align: center; min-height: 36px; line-height: 1.4; margin-bottom: 8px;}
-    #timer { font-family: "JetBrains Mono", monospace; font-size: 20px; font-weight: 600; color: #111827; margin-bottom: 12px; display: none; }
+    #status { font-size: 12px; color: #cbd5e1; text-align: center; min-height: 36px; line-height: 1.4; margin-bottom: 8px;}
+    #timer { font-family: "JetBrains Mono", monospace; font-size: 20px; font-weight: 600; color: #f8fafc; margin-bottom: 12px; display: none; }
     
-    #visualizer { width: 100%; height: 40px; border-radius: 4px; background: #f9fafb; margin-bottom: 12px; display: none; }
+    #visualizer { width: 100%; height: 40px; border-radius: 5px; background: #334155; margin-bottom: 12px; display: none; }
 
     .controls-recording { display: none; gap: 16px; width: 100%; justify-content: center; margin-bottom: 12px; }
     .icon-btn { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; border: none; cursor: pointer; transition: all 0.2s; }
-    .btn-stop { background: #ef4444; color: white; }
-    .btn-stop:hover { background: #dc2626; transform: scale(1.05); }
+    .btn-stop { background: #f97316; color: white; }
+    .btn-stop:hover { background: #ea580c; transform: scale(1.05); }
     .btn-stop:active { transform: scale(0.95); }
-    .btn-cancel { background: #6b7280; color: white; }
-    .btn-cancel:hover { background: #4b5563; transform: scale(1.05); }
+    .btn-cancel { background: #475569; color: white; }
+    .btn-cancel:hover { background: #334155; transform: scale(1.05); }
     .btn-cancel:active { transform: scale(0.95); }
 
     .loader { 

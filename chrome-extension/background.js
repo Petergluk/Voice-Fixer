@@ -10,6 +10,7 @@ async function processAudioInBackground(base64Audio, tabId) {
     const result = await chrome.storage.local.get({
       geminiApiKey: '',
       geminiModel: 'gemini-3-flash-preview',
+      enableNotifications: true,
       systemPrompt: `Ты транскрибатор. Твоя задача — дословно перевести аудио в текст. 
 ПРАВИЛА:
 1. Расставь знаки препинания и заглавные буквы.
@@ -39,6 +40,15 @@ async function processAudioInBackground(base64Audio, tabId) {
       func: insertTextIntoActiveElement,
       args: [text]
     });
+    
+    if (result.enableNotifications) {
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', // transparent fallback
+        title: 'Voice Fixer: Готово',
+        message: 'Расшифровка успешно вставлена (или скопирована)!'
+      });
+    }
 
   } catch (err) {
     console.error("Voice Fixer Background Error:", err);
@@ -46,6 +56,18 @@ async function processAudioInBackground(base64Audio, tabId) {
       target: { tabId: tabId },
       func: showToast,
       args: [`❌ Ошибка Voice Fixer: ${err.message}`, true]
+    });
+    
+    // Получаем настройку уведомлений для ошибки (можно было бы передать result, но берем напрямую)
+    chrome.storage.local.get({ enableNotifications: true }, (res) => {
+      if (res.enableNotifications) {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+          title: 'Voice Fixer: Ошибка',
+          message: err.message
+        });
+      }
     });
   }
 }

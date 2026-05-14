@@ -11,11 +11,13 @@ document.addEventListener('DOMContentLoaded', () => {
   chrome.storage.local.get({
     geminiApiKey: '',
     geminiModel: 'gemini-3-flash-preview',
-    systemPrompt: defaultPrompt
+    systemPrompt: defaultPrompt,
+    enableNotifications: true
   }, (result) => {
     document.getElementById('apiKey').value = result.geminiApiKey;
     document.getElementById('modelSelect').value = result.geminiModel;
     document.getElementById('promptText').value = result.systemPrompt;
+    document.getElementById('enableNotifications').checked = result.enableNotifications;
   });
 
   // Сохранение
@@ -23,11 +25,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const apiKey = document.getElementById('apiKey').value.trim();
     const model = document.getElementById('modelSelect').value;
     const prompt = document.getElementById('promptText').value.trim();
+    const notify = document.getElementById('enableNotifications').checked;
 
     chrome.storage.local.set({ 
       geminiApiKey: apiKey,
       geminiModel: model,
-      systemPrompt: prompt || defaultPrompt
+      systemPrompt: prompt || defaultPrompt,
+      enableNotifications: notify
     }, () => {
       const status = document.getElementById('status');
       status.textContent = '✅ Настройки успешно сохранены!';
