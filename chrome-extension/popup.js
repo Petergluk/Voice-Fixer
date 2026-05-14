@@ -11,7 +11,6 @@ let drawVisual;
 const recordBtn = document.getElementById('recordBtn');
 const stopBtn = document.getElementById('stopBtn');
 const statusDiv = document.getElementById('status');
-const settingsLink = document.getElementById('settingsLink');
 const timerDiv = document.getElementById('timer');
 const visualizer = document.getElementById('visualizer');
 const controlsStart = document.getElementById('controls-start');
@@ -19,11 +18,6 @@ const controlsRecording = document.getElementById('controls-recording');
 
 let isCancelled = false;
 const cancelBtn = document.getElementById('cancelBtn');
-
-// Открытие страницы настроек
-settingsLink.addEventListener('click', () => {
-  chrome.runtime.openOptionsPage();
-});
 
 // Сохраняем обработчик для отмены
 cancelBtn.addEventListener('click', () => {
@@ -74,7 +68,6 @@ async function startRecording() {
     // Обновляем UI
     controlsStart.style.display = 'none';
     controlsRecording.style.display = 'flex';
-    settingsLink.style.display = 'none';
     statusDiv.textContent = 'Идет запись... Говорите. Не закрывайте окно.';
     
     startTime = Date.now();
@@ -116,7 +109,6 @@ function stopRecording() {
     recording = false;
     controlsStart.style.display = 'block';
     controlsRecording.style.display = 'none';
-    settingsLink.style.display = 'block';
     clearInterval(timerInterval);
     timerDiv.style.display = 'none';
   }
