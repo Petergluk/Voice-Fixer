@@ -7,13 +7,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 async function processAudioInBackground(base64Audio, tabId) {
   try {
-    // Уведомляем пользователя на странице, что процесс пошел в фоне
-    chrome.scripting.executeScript({
-      target: { tabId: tabId },
-      func: showToast,
-      args: ['🎙️ Voice Fixer: Обрабатываем аудио...', false]
-    });
-
     const result = await chrome.storage.local.get({
       geminiApiKey: '',
       geminiModel: 'gemini-3-flash-preview',
@@ -26,12 +19,19 @@ async function processAudioInBackground(base64Audio, tabId) {
 Выведи ТОЛЬКО конечный чистый текст. Никаких префиксов вроде "Вот текст:" не нужно.`
     });
 
+    // Уведомляем пользователя на странице, что процесс пошел в фоне (Persistent)
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: showToast,
+      args: [`🎙️ Voice Fixer (${result.geminiModel}): Обрабатываем аудио...`, false, true]
+    });
+
     if (!result.geminiApiKey) {
       throw new Error('API ключ не задан. Зайдите в настройки расширения.');
     }
 
     // Вызываем модель (вместе с резервными)
-    const text = await sendWithFallback(base64Audio, result.geminiApiKey, result.geminiModel, result.systemPrompt);
+    const text = await sendWithFallback(base64Audio, result.geminiApiKey, result.geminiModel, result.systemPrompt, tabId);
 
     // Вставляем результат
     chrome.scripting.executeScript({
@@ -51,7 +51,7 @@ async function processAudioInBackground(base64Audio, tabId) {
 }
 
 // Отправка с fallback перебором
-async function sendWithFallback(base64Audio, apiKey, initialModel, prompt) {
+async function sendWithFallback(base64Audio, apiKey, initialModel, prompt, tabId) {
   const fallbackModels = ['gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
   // Формируем очередь, ставя первую выбранную, затем остальные
   const queue = [initialModel, ...fallbackModels.filter(m => m !== initialModel)];
@@ -61,6 +61,14 @@ async function sendWithFallback(base64Audio, apiKey, initialModel, prompt) {
     const currentModel = queue[i];
     try {
       console.log(`Попытка обработки через ${currentModel}...`);
+      
+      // Обновляем тост с названием текущей модели
+      chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        func: showToast,
+        args: [`🎙️ Voice Fixer (${currentModel}): Обрабатываем аудио...`, false, true]
+      });
+
       const text = await sendToGemini(base64Audio, apiKey, currentModel, prompt);
       return text;
     } catch (err) {
@@ -97,7 +105,7 @@ async function sendToGemini(base64Audio, apiKey, modelName, prompt) {
 }
 
 // --- Функции, выполняемые на удаленной странице ---
-function showToast(message, isError) {
+function showToast(message, isError, isSticky = false) {
   let div = document.getElementById('voice-fixer-toast');
   if (!div) {
     div = document.createElement('div');
@@ -110,8 +118,10 @@ function showToast(message, isError) {
     div.style.zIndex = '9999999';
     div.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     div.style.fontSize = '14px';
-    div.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+    div.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
     div.style.transition = 'opacity 0.3s';
+    div.style.maxWidth = '350px';
+    div.style.wordWrap = 'break-word';
     document.body.appendChild(div);
   }
   div.style.background = isError ? '#dc2626' : '#16a34a';
@@ -120,33 +130,29 @@ function showToast(message, isError) {
   div.style.opacity = '1';
 
   clearTimeout(window.vfToastTimeout);
-  window.vfToastTimeout = setTimeout(() => {
-    div.style.opacity = '0';
-    setTimeout(() => div.remove(), 300);
-  }, isError ? 5000 : 3000);
+  if (!isSticky) {
+    window.vfToastTimeout = setTimeout(() => {
+      div.style.opacity = '0';
+      setTimeout(() => div.remove(), 300);
+    }, isError ? 6000 : 3000);
+  }
 }
 
 function insertTextIntoActiveElement(text) {
-  const toast = (msg) => {
+  // Локальная функция для обновления тоста после вставки
+  const toastDone = (msg) => {
     let div = document.getElementById('voice-fixer-toast');
-    if (!div) {
-      div = document.createElement('div');
-      div.id = 'voice-fixer-toast';
-      div.style.position = 'fixed'; div.style.bottom = '20px'; div.style.right = '20px';
-      div.style.padding = '12px 20px'; div.style.borderRadius = '8px'; div.style.zIndex = '9999999';
-      div.style.fontFamily = 'sans-serif'; div.style.fontSize = '14px'; div.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
-      div.style.transition = 'opacity 0.3s';
-      document.body.appendChild(div);
+    if (div) {
+      div.style.background = '#16a34a'; div.style.color = 'white'; div.textContent = msg; div.style.opacity = '1';
+      clearTimeout(window.vfToastTimeout);
+      window.vfToastTimeout = setTimeout(() => { div.style.opacity = '0'; setTimeout(() => div.remove(), 300); }, 3000);
     }
-    div.style.background = '#16a34a'; div.style.color = 'white'; div.textContent = msg; div.style.opacity = '1';
-    clearTimeout(window.vfToastTimeout);
-    window.vfToastTimeout = setTimeout(() => { div.style.opacity = '0'; setTimeout(() => div.remove(), 300); }, 3000);
   };
 
   const el = document.activeElement;
   if (!el || el === document.body) {
     navigator.clipboard.writeText(text).then(() => {
-      toast('Текст скопирован в буфер обмена (т.к. вы не выделили поле ввода).');
+      toastDone('Текст скопирован в буфер обмена (т.к. вы не выделили поле ввода).');
     });
     return;
   }
@@ -163,7 +169,7 @@ function insertTextIntoActiveElement(text) {
     
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
-    toast('✅ Текст вставлен!');
+    toastDone('✅ Текст вставлен!');
   } 
   // Если это ContentEditable область
   else if (el.isContentEditable) {
@@ -178,10 +184,10 @@ function insertTextIntoActiveElement(text) {
       selection.collapseToEnd();
     }
     el.dispatchEvent(new Event('input', { bubbles: true }));
-    toast('✅ Текст вставлен в редактор!');
+    toastDone('✅ Текст вставлен в редактор!');
   } else {
     navigator.clipboard.writeText(text).then(() => {
-      toast('Текст скопирован в буфер обмена!');
+      toastDone('Текст скопирован в буфер обмена!');
     });
   }
 }

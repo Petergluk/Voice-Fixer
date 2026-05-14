@@ -52,12 +52,15 @@ async function startRecording() {
 
     mediaRecorder.start();
     recording = true;
+    isCancelled = false;
     
+    // Запуск визуализатора
+    visualize(stream);
+
     // Обновляем UI
-    recordBtn.textContent = 'Остановить (Пробел)';
-    recordBtn.classList.add('recording');
-    cancelBtn.style.display = 'block';
-    statusDiv.textContent = 'Идет запись... Говорите. Не закрывайте это окно.';
+    controlsStart.style.display = 'none';
+    controlsRecording.style.display = 'flex';
+    statusDiv.textContent = 'Идет запись... Говорите. Не закрывайте окно.';
     
     startTime = Date.now();
     timerDiv.style.display = 'block';
@@ -87,13 +90,56 @@ function stopRecording() {
     // Останавливаем стрим микрофона, чтобы пропал красный значок
     mediaRecorder.stream.getTracks().forEach(track => track.stop());
     
+    // Остановка визуализатора
+    if (drawVisual) cancelAnimationFrame(drawVisual);
+    if (audioCtx) {
+       audioCtx.close().catch(e => console.error(e));
+       audioCtx = null;
+    }
+    visualizer.style.display = 'none';
+
     recording = false;
-    recordBtn.textContent = 'Начать запись';
-    recordBtn.classList.remove('recording');
-    cancelBtn.style.display = 'none';
+    controlsStart.style.display = 'block';
+    controlsRecording.style.display = 'none';
     clearInterval(timerInterval);
     timerDiv.style.display = 'none';
   }
+}
+
+function visualize(stream) {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  const source = audioCtx.createMediaStreamSource(stream);
+  source.connect(analyser);
+  analyser.fftSize = 256;
+  const bufferLength = analyser.frequencyBinCount;
+  const dataArray = new Uint8Array(bufferLength);
+  
+  const canvasCtx = visualizer.getContext('2d');
+  visualizer.width = visualizer.offsetWidth * window.devicePixelRatio;
+  visualizer.height = visualizer.offsetHeight * window.devicePixelRatio;
+  canvasCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  visualizer.style.display = 'block';
+
+  function draw() {
+    drawVisual = requestAnimationFrame(draw);
+    analyser.getByteFrequencyData(dataArray);
+
+    canvasCtx.fillStyle = '#f9fafb'; // background
+    canvasCtx.fillRect(0, 0, visualizer.offsetWidth, visualizer.offsetHeight);
+
+    const barWidth = (visualizer.offsetWidth / bufferLength) * 2.5;
+    let barHeight;
+    let x = 0;
+
+    for(let i = 0; i < bufferLength; i++) {
+      barHeight = (dataArray[i] / 255) * visualizer.offsetHeight;
+      canvasCtx.fillStyle = '#ef4444'; // red bars
+      canvasCtx.fillRect(x, visualizer.offsetHeight - barHeight, barWidth, barHeight);
+      x += barWidth + 1;
+    }
+  }
+  draw();
 }
 
 // Остановка по пробелу и отмена по Esc
@@ -116,9 +162,8 @@ async function handleAudioStop() {
     return;
   }
 
-  statusDiv.textContent = 'Аудио передано в фон для расшифровки... Можно закрывать окно.';
+  statusDiv.textContent = 'Аудио передано в фон для обработки... Можно закрывать окно.';
   recordBtn.disabled = true;
-  loader.style.display = 'block';
 
   const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
   const base64Data = await blobToBase64(audioBlob);

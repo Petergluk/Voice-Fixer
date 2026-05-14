@@ -44,8 +44,20 @@
     #status { font-size: 12px; color: #4b5563; text-align: center; min-height: 36px; line-height: 1.4; margin-bottom: 8px;}
     #timer { font-family: "JetBrains Mono", monospace; font-size: 20px; font-weight: 600; color: #111827; margin-bottom: 12px; display: none; }
     
+    #visualizer { width: 100%; height: 40px; border-radius: 4px; background: #f9fafb; margin-bottom: 12px; display: none; }
+
+    .controls-recording { display: none; gap: 16px; width: 100%; justify-content: center; margin-bottom: 12px; }
+    .icon-btn { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; border: none; cursor: pointer; transition: all 0.2s; }
+    .btn-stop { background: #ef4444; color: white; }
+    .btn-stop:hover { background: #dc2626; transform: scale(1.05); }
+    .btn-stop:active { transform: scale(0.95); }
+    .btn-cancel { background: #6b7280; color: white; }
+    .btn-cancel:hover { background: #4b5563; transform: scale(1.05); }
+    .btn-cancel:active { transform: scale(0.95); }
+
     .loader { 
       display: none; 
+
       border: 2px solid #f3f3f3; 
       border-radius: 50%; 
       border-top: 2px solid #3b82f6; 
@@ -71,13 +83,21 @@
   <h3><span style="font-size: 18px">🎙️</span> Voice Fixer</h3>
   
   <div id="timer">00:00</div>
+  <canvas id="visualizer"></canvas>
   
-  <div style="display: flex; gap: 8px; width: 100%; margin-bottom: 12px;">
-    <button id="recordBtn" style="flex: 1; margin-bottom: 0;">Начать запись</button>
-    <button id="cancelBtn" style="display: none; background-color: #6b7280; color: white; border: none; border-radius: 8px; cursor: pointer; padding: 12px; font-size: 14px; font-weight: 500;" title="Отменить запись (Esc)">✕ Отмена</button>
+  <div style="width: 100%; margin-bottom: 12px;" id="controls-start">
+    <button id="recordBtn" class="btn-record" title="Space или Cmd/Ctrl+Shift+X">Начать запись</button>
+  </div>
+
+  <div class="controls-recording" id="controls-recording">
+    <button id="stopBtn" class="icon-btn btn-stop" title="Остановить и расшифровать (Пробел)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
+    </button>
+    <button id="cancelBtn" class="icon-btn btn-cancel" title="Отменить запись (Esc)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+    </button>
   </div>
   
-  <div class="loader" id="loader"></div>
   <div id="status">Нажмите кнопку, чтобы начать диктовку.</div>
   
   <div id="settingsLink" title="Открыть настройки расширения">Настройки</div>
