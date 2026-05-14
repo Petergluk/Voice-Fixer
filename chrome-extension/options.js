@@ -12,12 +12,24 @@ document.addEventListener('DOMContentLoaded', () => {
     geminiApiKey: '',
     geminiModel: 'gemini-3-flash-preview',
     systemPrompt: defaultPrompt,
-    enableNotifications: true
+    enableNotifications: true,
+    saveAudio: false,
+    lastTranscription: '',
+    errorLog: []
   }, (result) => {
     document.getElementById('apiKey').value = result.geminiApiKey;
     document.getElementById('modelSelect').value = result.geminiModel;
     document.getElementById('promptText').value = result.systemPrompt;
     document.getElementById('enableNotifications').checked = result.enableNotifications;
+    document.getElementById('saveAudio').checked = result.saveAudio;
+    document.getElementById('lastTranscription').value = result.lastTranscription || 'Нет данных';
+    
+    const errTextarea = document.getElementById('errorLog');
+    if (result.errorLog.length === 0) {
+      errTextarea.value = 'Ошибок пока нет';
+    } else {
+      errTextarea.value = result.errorLog.map(e => `[${new Date(e.time).toLocaleString()}] ${e.message}`).join('\n\n');
+    }
   });
 
   // Сохранение
@@ -26,18 +38,37 @@ document.addEventListener('DOMContentLoaded', () => {
     const model = document.getElementById('modelSelect').value;
     const prompt = document.getElementById('promptText').value.trim();
     const notify = document.getElementById('enableNotifications').checked;
+    const saveAudio = document.getElementById('saveAudio').checked;
 
     chrome.storage.local.set({ 
       geminiApiKey: apiKey,
       geminiModel: model,
       systemPrompt: prompt || defaultPrompt,
-      enableNotifications: notify
+      enableNotifications: notify,
+      saveAudio: saveAudio
     }, () => {
       const status = document.getElementById('status');
       status.textContent = '✅ Настройки успешно сохранены!';
       setTimeout(() => {
         status.textContent = '';
       }, 3000);
+    });
+  });
+
+  document.getElementById('copyLast').addEventListener('click', () => {
+    const text = document.getElementById('lastTranscription').value;
+    if (text && text !== 'Нет данных') {
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('copyLast');
+        btn.textContent = 'Скопировано!';
+        setTimeout(() => btn.textContent = 'Скопировать', 2000);
+      });
+    }
+  });
+
+  document.getElementById('clearErrors').addEventListener('click', () => {
+    chrome.storage.local.set({ errorLog: [] }, () => {
+      document.getElementById('errorLog').value = 'Ошибок пока нет';
     });
   });
 

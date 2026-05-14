@@ -68,7 +68,7 @@ async function startRecording() {
     // Обновляем UI
     controlsStart.style.display = 'none';
     controlsRecording.style.display = 'flex';
-    statusDiv.textContent = 'Идет запись... Говорите. Можете переключить вкладку — о готовности мы уведомим!';
+    statusDiv.textContent = 'Идет запись... Говорите. (Не закрывайте это окно до остановки записи!)';
     
     startTime = Date.now();
     timerDiv.style.display = 'block';

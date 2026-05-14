@@ -33,9 +33,9 @@
   <div class="card">
     <h3>⚙️ Основные настройки</h3>
     <div class="field">
-      <label for="apiKey">Ключ Google Gemini API:</label>
-      <input type="password" id="apiKey" placeholder="AIzaSy..." />
-      <div class="hint">Для получения бесплатного ключа перейдите в <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>.</div>
+      <label for="apiKey">Ключи Google Gemini API (через запятую или с новой строки):</label>
+      <textarea id="apiKey" style="height: 60px;" placeholder="AIzaSy..."></textarea>
+      <div class="hint">Для получения бесплатного ключа перейдите в <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>. Укажите несколько ключей, чтобы избежать ошибок лимитов.</div>
     </div>
     
     <div class="field">
@@ -60,8 +60,31 @@
       </label>
     </div>
 
+    <div class="field">
+      <label for="saveAudio" style="display: flex; align-items: center; gap: 8px;">
+        <input type="checkbox" id="saveAudio" style="width: auto; margin: 0; padding: 0" />
+        Сохранять аудио локально (в папку Загрузки или с запросом где сохранить)
+      </label>
+    </div>
+
     <button id="save">Сохранить настройки</button>
     <div id="status"></div>
+  </div>
+
+  <div class="card">
+    <h3>💾 Внутренняя память и логи</h3>
+    
+    <div class="field">
+      <label for="lastTranscription">Последняя успешная расшифровка:</label>
+      <textarea id="lastTranscription" readonly style="height: 100px; background: #f3f4f6; color: #374151; margin-bottom: 5px;"></textarea>
+      <button id="copyLast">Скопировать</button>
+    </div>
+
+    <div class="field" style="margin-top: 20px;">
+      <label for="errorLog">Журнал ошибок моделей:</label>
+      <textarea id="errorLog" readonly style="height: 100px; background: #fef2f2; color: #991b1b; border-color: #fca5a5; font-family: monospace; font-size: 12px;"></textarea>
+      <button id="clearErrors" style="background: #ef4444; margin-top: 5px;">Очистить журнал</button>
+    </div>
   </div>
   
   <script src="options.js"></script>

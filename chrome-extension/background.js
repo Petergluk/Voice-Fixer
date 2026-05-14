@@ -1,3 +1,11 @@
+async function logErrorOut(errMessage) {
+  const data = await chrome.storage.local.get({ errorLog: [] });
+  const log = data.errorLog;
+  log.unshift({ time: new Date().toISOString(), message: errMessage });
+  if (log.length > 50) log.pop();
+  await chrome.storage.local.set({ errorLog: log });
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'PROCESS_AUDIO') {
     processAudioInBackground(request.audioBase64, request.tabId);
@@ -11,6 +19,7 @@ async function processAudioInBackground(base64Audio, tabId) {
       geminiApiKey: '',
       geminiModel: 'gemini-3-flash-preview',
       enableNotifications: true,
+      saveAudio: false,
       systemPrompt: `Ты транскрибатор. Твоя задача — дословно перевести аудио в текст. 
 ПРАВИЛА:
 1. Расставь знаки препинания и заглавные буквы.
@@ -19,6 +28,20 @@ async function processAudioInBackground(base64Audio, tabId) {
 4. СТРОГО ЗАПРЕЩЕНО: перефразировать, изменять порядок слов, сокращать или менять структуру предложений. Сохраняй оригинальную речь, тон и стиль автора.
 Выведи ТОЛЬКО готовый текст без предисловий и форматирования.`
     });
+
+    if (result.saveAudio) {
+      try {
+        const d = new Date();
+        const tname = `${d.getFullYear()}${(d.getMonth()+1).toString().padStart(2,'0')}${d.getDate().toString().padStart(2,'0')}_${d.getHours().toString().padStart(2,'0')}${d.getMinutes().toString().padStart(2,'0')}`;
+        chrome.downloads.download({
+          url: 'data:audio/webm;base64,' + base64Audio,
+          filename: `VoiceFixer_${tname}.webm`,
+          saveAs: false
+        });
+      } catch (e) {
+        console.error("Download error:", e);
+      }
+    }
 
     // Уведомляем пользователя на странице, что процесс пошел в фоне (Persistent)
     chrome.scripting.executeScript({
@@ -52,6 +75,8 @@ async function processAudioInBackground(base64Audio, tabId) {
 
   } catch (err) {
     console.error("Voice Fixer Background Error:", err);
+    logErrorOut(err.message);
+    
     chrome.scripting.executeScript({
       target: { tabId: tabId },
       func: showToast,
@@ -73,29 +98,42 @@ async function processAudioInBackground(base64Audio, tabId) {
 }
 
 // Отправка с fallback перебором
-async function sendWithFallback(base64Audio, apiKey, initialModel, prompt, tabId) {
+async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt, tabId) {
+  const keys = apiKeyString.split(/[\n,]+/).map(k => k.trim()).filter(k => k);
+  if (keys.length === 0) throw new Error('API ключ не задан. Зайдите в настройки.');
+
   const fallbackModels = ['gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
   // Формируем очередь, ставя первую выбранную, затем остальные
   const queue = [initialModel, ...fallbackModels.filter(m => m !== initialModel)];
 
   let lastError;
-  for (let i = 0; i < queue.length; i++) {
-    const currentModel = queue[i];
-    try {
-      console.log(`Попытка обработки через ${currentModel}...`);
-      
-      // Обновляем тост с названием текущей модели
-      chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        func: showToast,
-        args: [`🎙️ Voice Fixer (${currentModel}): Обрабатываем аудио...`, false, true]
-      });
+  for (const key of keys) {
+    for (let i = 0; i < queue.length; i++) {
+      const currentModel = queue[i];
+      try {
+        console.log(`Попытка обработки через ${currentModel} (ключ ${key.substring(0, 5)}...)...`);
+        
+        // Обновляем тост с названием текущей модели
+        chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          func: showToast,
+          args: [`🎙️ Voice Fixer (${currentModel}): Обрабатываем аудио...`, false, true]
+        });
 
-      const text = await sendToGemini(base64Audio, apiKey, currentModel, prompt);
-      return text;
-    } catch (err) {
-      console.warn(`Ошибка при использовании ${currentModel}:`, err);
-      lastError = err;
+        const text = await sendToGemini(base64Audio, key, currentModel, prompt);
+        // Сохраняем на всякий случай в память, чтобы не потерялось
+        chrome.storage.local.set({ lastTranscription: text });
+        return text;
+      } catch (err) {
+        console.warn(`Ошибка при использовании ${currentModel}:`, err);
+        lastError = err;
+        
+        // Если проблема с ключом или лимитами - пробуем следующий ключ
+        const errMsg = err.message.toLowerCase();
+        if (errMsg.includes('key') || errMsg.includes('quota') || errMsg.includes('429')) {
+             break; // переходим к следующему ключу
+        }
+      }
     }
   }
   throw lastError; // Если все упали
@@ -118,8 +156,10 @@ async function sendToGemini(base64Audio, apiKey, modelName, prompt) {
   });
 
   if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.error?.message || 'Ошибка API');
+    const err = await response.json().catch(() => ({}));
+    let msg = err?.error?.message || `Ошибка API: ${response.status}`;
+    if (response.status === 429) msg = 'Quota exceeded (429)';
+    throw new Error(msg);
   }
 
   const data = await response.json();
