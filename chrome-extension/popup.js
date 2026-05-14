@@ -53,8 +53,8 @@ async function startRecording() {
 
   } catch (err) {
     console.error('Mic Access Error:', err);
-    if (err.name === 'NotAllowedError') {
-       statusDiv.innerHTML = '<span style="color:red">Нет доступа к микрофону. Кликните правой кнопкой по иконке расширения, выберите "Управление расширение" и разрешите микрофон.</span>';
+    if (err.name === 'NotAllowedError' || err.name === 'NotFoundError') {
+       statusDiv.innerHTML = '<span style="color:red">Нет доступа к микрофону. Кликните "Настройки API ключа" ниже и разрешите его там.</span>';
     } else {
        statusDiv.textContent = 'Ошибка доступа к микрофону: ' + err.message;
     }
@@ -98,8 +98,21 @@ async function handleAudioStop() {
   const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
   const base64Data = await blobToBase64(audioBlob);
 
-  chrome.storage.local.get(['geminiApiKey'], async (result) => {
+  chrome.storage.local.get({
+    geminiApiKey: '',
+    geminiModel: 'gemini-1.5-flash',
+    systemPrompt: `Ты расшифровщик и корректор текста. Твоя специализация - транскрипт аудиофайлов, вычитка, очистка, оптимизация расшифровок разговорной речи. 
+Задачи:
+- исправить ошибки распознавания по смыслу.
+- расставить знаки препинания, орфографию.
+- убрать слова-паразиты (как бы, ну, эээ, собственно).
+- разбить длинные предложения и абзацы для читабельности.
+Выведи ТОЛЬКО конечный чистый текст. Никаких префиксов вроде "Вот текст:" не нужно.`
+  }, async (result) => {
     const apiKey = result.geminiApiKey;
+    const model = result.geminiModel;
+    const prompt = result.systemPrompt;
+
     if (!apiKey) {
       statusDiv.innerHTML = '<span style="color:red">Ошибка: API ключ не задан. Нажмите на "Настройки API ключа".</span>';
       recordBtn.disabled = false;
@@ -108,7 +121,7 @@ async function handleAudioStop() {
     }
 
     try {
-      const text = await sendToGemini(base64Data, apiKey);
+      const text = await sendToGemini(base64Data, apiKey, model, prompt);
       statusDiv.textContent = 'Успешно! Вставляем текст...';
       
       // Вставка в активную вкладку (Content Script контекст)
@@ -146,17 +159,8 @@ function blobToBase64(blob) {
   });
 }
 
-async function sendToGemini(base64Audio, apiKey) {
-  const prompt = `Ты расшифровщик и корректор текста. Твоя специализация - транскрипт аудиофайлов, вычитка, очистка, оптимизация расшифровок разговорной речи. 
-Задачи:
-- исправить ошибки распознавания по смыслу.
-- расставить знаки препинания, орфографию.
-- убрать слова-паразиты (как бы, ну, эээ, собственно).
-- разбить длинные предложения и абзацы для читабельности.
-Выведи ТОЛЬКО конечный чистый текст. Никаких префиксов вроде "Вот текст:" не нужно.`;
-
-  // Используем Gemini 1.5 Flash (так как он отлично работает со звуком и доступен везде)
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + apiKey;
+async function sendToGemini(base64Audio, apiKey, modelName, prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
   
   const payload = {
     contents: [
