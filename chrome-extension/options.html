@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Настройки Voice Fixer</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; max-width: 450px; }
+    h2 { margin-top: 0; color: #1f2937; }
+    .card { background: #f9fafb; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; }
+    input { width: calc(100% - 16px); padding: 8px; margin-top: 5px; margin-bottom: 15px; border: 1px solid #d1d5db; border-radius: 4px; }
+    button { padding: 10px 16px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; transition: background 0.2s;}
+    button:hover { background: #1d4ed8; }
+    #status { color: #16a34a; margin-top: 10px; font-size: 14px; min-height: 20px; font-weight: 500;}
+    .hint { font-size: 12px; color: #6b7280; margin-top: 20px; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <h2>Настройки Voice Fixer</h2>
+  <div class="card">
+    <label for="apiKey" style="font-weight: 500; font-size: 14px;">Ключ Google Gemini API:</label>
+    <input type="password" id="apiKey" placeholder="AIzaSy..." />
+    <button id="save">Сохранить настройки</button>
+    <div id="status"></div>
+  </div>
+  
+  <p class="hint">
+    Ваш ключ хранится исключительно локально в памяти браузера.<br>
+    Для получения бесплатного ключа перейдите в <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>.
+  </p>
+  <script src="options.js"></script>
+</body>
+</html>

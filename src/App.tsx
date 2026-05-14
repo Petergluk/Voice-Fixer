@@ -137,6 +137,21 @@ export default function App() {
 
   const clearError = () => setErrorMsg('');
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Игнорируем пробел в текстовых полях
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA' || (document.activeElement as HTMLElement)?.isContentEditable) {
+        return;
+      }
+      if (e.code === 'Space' && recording) {
+        e.preventDefault();
+        stopRecording();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [recording]);
+
   const startRecording = async () => {
     clearError();
     try {

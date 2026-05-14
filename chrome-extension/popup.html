@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Voice Fixer</title>
+  <style>
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+      width: 250px; 
+      padding: 16px; 
+      margin: 0; 
+      display: flex; 
+      flex-direction: column; 
+      align-items: center; 
+      background: #ffffff;
+    }
+    h3 { margin: 0 0 16px 0; color: #111827; font-size: 16px; display: flex; align-items: center; gap: 8px;}
+    #recordBtn {
+      width: 100%; 
+      padding: 12px; 
+      font-size: 14px; 
+      font-weight: 500;
+      background-color: #ef4444; 
+      color: white; 
+      border: none; 
+      border-radius: 8px; 
+      cursor: pointer; 
+      margin-bottom: 12px; 
+      transition: background-color 0.2s, transform 0.1s;
+    }
+    #recordBtn:active { transform: scale(0.98); }
+    #recordBtn:disabled { background-color: #9ca3af; cursor: not-allowed; }
+    
+    #recordBtn.recording {
+      background-color: #dc2626;
+      animation: pulse 1.5s infinite ease-in-out;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.8; transform: scale(0.98); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    
+    #status { font-size: 12px; color: #4b5563; text-align: center; min-height: 36px; line-height: 1.4; margin-bottom: 8px;}
+    #timer { font-family: "JetBrains Mono", monospace; font-size: 20px; font-weight: 600; color: #111827; margin-bottom: 12px; display: none; }
+    
+    .loader { 
+      display: none; 
+      border: 2px solid #f3f3f3; 
+      border-radius: 50%; 
+      border-top: 2px solid #3b82f6; 
+      width: 18px; 
+      height: 18px; 
+      animation: spin 1s linear infinite; 
+      margin: 0 auto 12px; 
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    
+    #settingsLink { 
+      font-size: 12px; 
+      color: #6b7280; 
+      cursor: pointer; 
+      text-decoration: underline; 
+      margin-top: 8px; 
+      transition: color 0.2s;
+    }
+    #settingsLink:hover { color: #111827; }
+  </style>
+</head>
+<body>
+  <h3><span style="font-size: 18px">🎙️</span> Voice Fixer</h3>
+  
+  <div id="timer">00:00</div>
+  <button id="recordBtn">Начать запись</button>
+  
+  <div class="loader" id="loader"></div>
+  <div id="status">Нажмите кнопку, чтобы начать диктовку.</div>
+  
+  <div id="settingsLink" title="Открыть настройки расширения">Настройки API ключа</div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
