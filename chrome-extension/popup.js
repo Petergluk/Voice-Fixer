@@ -24,6 +24,11 @@ recordBtn.addEventListener('click', async () => {
   }
 });
 
+// Автозапуск записи при открытии окна расширения
+document.addEventListener('DOMContentLoaded', () => {
+  startRecording();
+});
+
 async function startRecording() {
   try {
     // Всплывающее окно запрашивает доступ к микрофону

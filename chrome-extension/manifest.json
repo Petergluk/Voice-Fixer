@@ -12,5 +12,14 @@
     "default_popup": "popup.html",
     "default_title": "Voice Fixer"
   },
-  "options_page": "options.html"
+  "options_page": "options.html",
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+X",
+        "mac": "Command+Shift+X"
+      },
+      "description": "Начать диктовку (Voice Fixer)"
+    }
+  }
 }
