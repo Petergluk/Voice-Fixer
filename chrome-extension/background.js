@@ -149,21 +149,33 @@ async function sendToGemini(base64Audio, apiKey, modelName, prompt) {
     generationConfig: { temperature: 0.2 }
   };
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000); // Тайм-аут 2 минуты
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    let msg = err?.error?.message || `Ошибка API: ${response.status}`;
-    if (response.status === 429) msg = 'Quota exceeded (429)';
-    throw new Error(msg);
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      let msg = err?.error?.message || `Ошибка API: ${response.status}`;
+      if (response.status === 429) msg = 'Quota exceeded (429)';
+      throw new Error(msg);
+    }
+
+    const data = await response.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') throw new Error('Превышено время ожидания ответа от ИИ (Тайм-аут 2 мин)');
+    throw err;
   }
-
-  const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
 }
 
 // --- Функции, выполняемые на удаленной странице ---

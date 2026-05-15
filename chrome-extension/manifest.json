@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Voice Fixer Assistant",
   "version": "1.0",
-  "description": "Умная голосовая диктовка с ИИ Gemini. Hotkeys: Ctrl/Cmd+Shift+X (запуск), Пробел (стоп), Esc (отмена).",
+  "description": "Умная голосовая диктовка с ИИ Gemini.",
   "permissions": [
     "storage",
     "activeTab",
