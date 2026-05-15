@@ -1,3 +1,5 @@
+let activeTasks = {};
+
 async function logErrorOut(errMessage) {
   const data = await chrome.storage.local.get({ errorLog: [] });
   const log = data.errorLog;
@@ -10,6 +12,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'PROCESS_AUDIO') {
     processAudioInBackground(request.audioBase64, request.tabId, request.duration);
     sendResponse({ status: "started" });
+  } else if (request.action === 'CANCEL_TASK') {
+    const tId = sender.tab ? sender.tab.id : request.tabId;
+    if (tId && activeTasks[tId]) {
+      activeTasks[tId].action = 'CANCEL';
+      if (activeTasks[tId].controller) activeTasks[tId].controller.abort();
+    }
+  } else if (request.action === 'SKIP_MODEL_TASK') {
+    const tId = sender.tab ? sender.tab.id : request.tabId;
+    if (tId && activeTasks[tId]) {
+      activeTasks[tId].action = 'SKIP_MODEL';
+      if (activeTasks[tId].controller) activeTasks[tId].controller.abort();
+    }
+  } else if (request.action === 'SKIP_KEY_TASK') {
+    const tId = sender.tab ? sender.tab.id : request.tabId;
+    if (tId && activeTasks[tId]) {
+      activeTasks[tId].action = 'SKIP_KEY';
+      if (activeTasks[tId].controller) activeTasks[tId].controller.abort();
+    }
   }
 });
 
@@ -18,6 +38,7 @@ async function processAudioInBackground(base64Audio, tabId, duration) {
     const result = await chrome.storage.local.get({
       geminiApiKey: '',
       geminiModel: 'gemini-3-flash-preview',
+      geminiTimeout: 3,
       enableNotifications: true,
       saveAudio: false,
       systemPrompt: `Ты транскрибатор. Твоя задача — дословно перевести аудио в текст. 
@@ -43,11 +64,14 @@ async function processAudioInBackground(base64Audio, tabId, duration) {
       }
     }
 
+    // Сбрасываем таск для данной вкладки
+    activeTasks[tabId] = { action: null };
+
     // Уведомляем пользователя на странице, что процесс пошел в фоне (Persistent)
     chrome.scripting.executeScript({
       target: { tabId: tabId },
       func: showToast,
-      args: [`🎙️ Voice Fixer (${result.geminiModel}): Обрабатываем аудио...`, false, true]
+      args: [`🎙️ Voice Fixer (${result.geminiModel}): Обрабатываем аудио...`, false, true, true]
     });
 
     if (!result.geminiApiKey) {
@@ -55,7 +79,17 @@ async function processAudioInBackground(base64Audio, tabId, duration) {
     }
 
     // Вызываем модель (вместе с резервными)
-    const text = await sendWithFallback(base64Audio, result.geminiApiKey, result.geminiModel, result.systemPrompt, tabId, duration);
+    const timeoutMs = (result.geminiTimeout || 3) * 60000;
+    const text = await sendWithFallback(base64Audio, result.geminiApiKey, result.geminiModel, result.systemPrompt, tabId, duration, timeoutMs);
+
+    if (activeTasks[tabId] && activeTasks[tabId].action === 'CANCEL') {
+      chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        func: showToast,
+        args: [`Расшифровка отменена.`, false, false, false]
+      });
+      return; 
+    }
 
     // Вставляем результат
     chrome.scripting.executeScript({
@@ -98,7 +132,7 @@ async function processAudioInBackground(base64Audio, tabId, duration) {
 }
 
 // Отправка с fallback перебором
-async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt, tabId, duration) {
+async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt, tabId, duration, timeoutMs) {
   const keys = apiKeyString.split(/[\n,]+/).map(k => k.trim()).filter(k => k);
   if (keys.length === 0) throw new Error('API ключ не задан. Зайдите в настройки.');
 
@@ -107,7 +141,8 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
   const queue = [initialModel, ...fallbackModels.filter(m => m !== initialModel)];
 
   let lastError;
-  for (const key of keys) {
+  for (let k = 0; k < keys.length; k++) {
+    const key = keys[k];
     for (let i = 0; i < queue.length; i++) {
       const currentModel = queue[i];
       try {
@@ -117,10 +152,10 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
         chrome.scripting.executeScript({
           target: { tabId: tabId },
           func: showToast,
-          args: [`🎙️ Voice Fixer (${currentModel}): Обрабатываем аудио...`, false, true]
+          args: [`🎙️ Voice Fixer (${currentModel}): Обрабатываем аудио...`, false, true, true]
         });
 
-        const text = await sendToGemini(base64Audio, key, currentModel, prompt, duration);
+        const text = await sendToGemini(base64Audio, key, currentModel, prompt, timeoutMs, tabId);
         // Сохраняем на всякий случай в память, чтобы не потерялось
         chrome.storage.local.set({ lastTranscription: text });
         return text;
@@ -128,9 +163,16 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
         console.warn(`Ошибка при использовании ${currentModel}:`, err);
         lastError = err;
         
+        if (err.name === 'AbortError') {
+           const action = activeTasks[tabId]?.action;
+           if (action === 'CANCEL') throw new Error('Отменено пользователем');
+           if (action === 'SKIP_MODEL') continue; // переходим к след. модели
+           if (action === 'SKIP_KEY') break; // переходим к след. ключу
+        }
+
         // Если проблема с ключом, лимитами или таймаутом сети - пробуем следующий ключ
         const errMsg = err.message.toLowerCase();
-        if (errMsg.includes('key') || errMsg.includes('quota') || errMsg.includes('429') || errMsg.includes('timeout') || errMsg.includes('тайм-аут') || errMsg.includes('504') || errMsg.includes('503')) {
+        if (errMsg.includes('key') || errMsg.includes('quota') || errMsg.includes('429') || errMsg.includes('timeout') || errMsg.includes('тайм-аут') || errMsg.includes('504') || errMsg.includes('503') || errMsg.includes('пользователем')) {
              break; // переходим к следующему ключу
         }
       }
@@ -140,7 +182,7 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
 }
 
 // Запрос в Gemini
-async function sendToGemini(base64Audio, apiKey, modelName, prompt, duration = 30) {
+async function sendToGemini(base64Audio, apiKey, modelName, prompt, timeoutMs, tabId) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
   const payload = {
     contents: [
@@ -150,8 +192,10 @@ async function sendToGemini(base64Audio, apiKey, modelName, prompt, duration = 3
   };
 
   const controller = new AbortController();
-  // Ждем максимум 11 минут (660 000 мс) как абсолютный лимит.
-  const timeoutMs = 660000;
+  if (activeTasks[tabId]) {
+      activeTasks[tabId].controller = controller;
+      activeTasks[tabId].action = null; // сбросим текущее действие
+  }
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
@@ -179,14 +223,17 @@ async function sendToGemini(base64Audio, apiKey, modelName, prompt, duration = 3
   } catch (err) {
     clearTimeout(timeoutId);
     if (err.name === 'AbortError') {
-      throw new Error(`Превышено максимальное время ожидания (11 мин) или обрыв сети. [timeout]`);
+      const action = activeTasks[tabId]?.action;
+      if (action) throw err; // Пробросим дальше для обработки (cancel/skip)
+      const maxMins = Math.round(timeoutMs / 60000);
+      throw new Error(`Превышено максимальное время ожидания (${maxMins} мин) или обрыв сети. [timeout]`);
     }
     throw err;
   }
 }
 
 // --- Функции, выполняемые на удаленной странице ---
-function showToast(message, isError, isSticky = false) {
+function showToast(message, isError, isSticky = false, isProcessing = false) {
   let div = document.getElementById('voice-fixer-toast');
   if (!div) {
     div = document.createElement('div');
@@ -207,15 +254,40 @@ function showToast(message, isError, isSticky = false) {
   }
   div.style.background = isError ? '#dc2626' : '#16a34a';
   div.style.color = 'white';
-  div.textContent = message;
   div.style.opacity = '1';
 
   clearTimeout(window.vfToastTimeout);
-  if (!isSticky) {
-    window.vfToastTimeout = setTimeout(() => {
-      div.style.opacity = '0';
-      setTimeout(() => div.remove(), 300);
-    }, isError ? 6000 : 3000);
+
+  if (isProcessing) {
+    div.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+        <span>${message}</span>
+        <div style="display: flex; gap: 4px;">
+          <button id="vf-toast-skip-btn" title="Попробовать другую модель/ключ" style="background: transparent; color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 14px; position: relative;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='transparent'">⏭️</button>
+          <button id="vf-toast-cancel-btn" title="Отменить" style="background: transparent; color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 14px;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='transparent'">✖</button>
+        </div>
+      </div>
+    `;
+    setTimeout(() => {
+      document.getElementById('vf-toast-skip-btn')?.addEventListener('click', () => {
+        chrome.runtime.sendMessage({ action: 'SKIP_MODEL_TASK' });
+        const btn = document.getElementById('vf-toast-skip-btn');
+        if (btn) btn.style.opacity = '0.5';
+      });
+      document.getElementById('vf-toast-cancel-btn')?.addEventListener('click', () => {
+        chrome.runtime.sendMessage({ action: 'CANCEL_TASK' });
+        div.style.opacity = '0';
+        setTimeout(() => div.remove(), 300);
+      });
+    }, 10);
+  } else {
+    div.textContent = message;
+    if (!isSticky) {
+      window.vfToastTimeout = setTimeout(() => {
+        div.style.opacity = '0';
+        setTimeout(() => div.remove(), 300);
+      }, isError ? 6000 : 3000);
+    }
   }
 }
 

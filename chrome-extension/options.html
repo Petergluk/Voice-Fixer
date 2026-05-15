@@ -58,6 +58,12 @@
     </div>
 
     <div class="field">
+      <label for="geminiTimeout">Максимальное время ожидания ответа от ИИ (минуты):</label>
+      <input type="number" id="geminiTimeout" min="1" max="15" value="3" style="width: 100px;">
+      <div class="hint">Если ответа нет за это время, процесс прервется или перейдет к следующей модели. Значение по умолчанию: 3 минуты.</div>
+    </div>
+
+    <div class="field">
       <label for="promptText">Системный промпт (инструкция для корректировки текста):</label>
       <textarea id="promptText"></textarea>
     </div>

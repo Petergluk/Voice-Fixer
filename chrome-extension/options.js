@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
   chrome.storage.local.get({
     geminiApiKey: '',
     geminiModel: 'gemini-3-flash-preview',
+    geminiTimeout: 3,
     systemPrompt: defaultPrompt,
     enableNotifications: true,
     saveAudio: false,
@@ -19,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }, (result) => {
     document.getElementById('apiKey').value = result.geminiApiKey;
     document.getElementById('modelSelect').value = result.geminiModel;
+    document.getElementById('geminiTimeout').value = result.geminiTimeout;
     document.getElementById('promptText').value = result.systemPrompt;
     document.getElementById('enableNotifications').checked = result.enableNotifications;
     document.getElementById('saveAudio').checked = result.saveAudio;
@@ -36,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('save').addEventListener('click', () => {
     const apiKey = document.getElementById('apiKey').value.trim();
     const model = document.getElementById('modelSelect').value;
+    const timeout = parseInt(document.getElementById('geminiTimeout').value, 10) || 3;
     const prompt = document.getElementById('promptText').value.trim();
     const notify = document.getElementById('enableNotifications').checked;
     const saveAudio = document.getElementById('saveAudio').checked;
@@ -43,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.storage.local.set({ 
       geminiApiKey: apiKey,
       geminiModel: model,
+      geminiTimeout: timeout,
       systemPrompt: prompt || defaultPrompt,
       enableNotifications: notify,
       saveAudio: saveAudio
