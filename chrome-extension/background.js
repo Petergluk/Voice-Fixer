@@ -8,12 +8,12 @@ async function logErrorOut(errMessage) {
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'PROCESS_AUDIO') {
-    processAudioInBackground(request.audioBase64, request.tabId);
+    processAudioInBackground(request.audioBase64, request.tabId, request.duration);
     sendResponse({ status: "started" });
   }
 });
 
-async function processAudioInBackground(base64Audio, tabId) {
+async function processAudioInBackground(base64Audio, tabId, duration) {
   try {
     const result = await chrome.storage.local.get({
       geminiApiKey: '',
@@ -55,7 +55,7 @@ async function processAudioInBackground(base64Audio, tabId) {
     }
 
     // Вызываем модель (вместе с резервными)
-    const text = await sendWithFallback(base64Audio, result.geminiApiKey, result.geminiModel, result.systemPrompt, tabId);
+    const text = await sendWithFallback(base64Audio, result.geminiApiKey, result.geminiModel, result.systemPrompt, tabId, duration);
 
     // Вставляем результат
     chrome.scripting.executeScript({
@@ -98,7 +98,7 @@ async function processAudioInBackground(base64Audio, tabId) {
 }
 
 // Отправка с fallback перебором
-async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt, tabId) {
+async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt, tabId, duration) {
   const keys = apiKeyString.split(/[\n,]+/).map(k => k.trim()).filter(k => k);
   if (keys.length === 0) throw new Error('API ключ не задан. Зайдите в настройки.');
 
@@ -120,7 +120,7 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
           args: [`🎙️ Voice Fixer (${currentModel}): Обрабатываем аудио...`, false, true]
         });
 
-        const text = await sendToGemini(base64Audio, key, currentModel, prompt);
+        const text = await sendToGemini(base64Audio, key, currentModel, prompt, duration);
         // Сохраняем на всякий случай в память, чтобы не потерялось
         chrome.storage.local.set({ lastTranscription: text });
         return text;
@@ -128,9 +128,9 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
         console.warn(`Ошибка при использовании ${currentModel}:`, err);
         lastError = err;
         
-        // Если проблема с ключом или лимитами - пробуем следующий ключ
+        // Если проблема с ключом, лимитами или таймаутом сети - пробуем следующий ключ
         const errMsg = err.message.toLowerCase();
-        if (errMsg.includes('key') || errMsg.includes('quota') || errMsg.includes('429')) {
+        if (errMsg.includes('key') || errMsg.includes('quota') || errMsg.includes('429') || errMsg.includes('timeout') || errMsg.includes('тайм-аут') || errMsg.includes('504') || errMsg.includes('503')) {
              break; // переходим к следующему ключу
         }
       }
@@ -140,7 +140,7 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
 }
 
 // Запрос в Gemini
-async function sendToGemini(base64Audio, apiKey, modelName, prompt) {
+async function sendToGemini(base64Audio, apiKey, modelName, prompt, duration = 30) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
   const payload = {
     contents: [
@@ -150,7 +150,9 @@ async function sendToGemini(base64Audio, apiKey, modelName, prompt) {
   };
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 120000); // Тайм-аут 2 минуты
+  // Ждем максимум 11 минут (660 000 мс) как абсолютный лимит.
+  const timeoutMs = 660000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(url, {
@@ -165,7 +167,10 @@ async function sendToGemini(base64Audio, apiKey, modelName, prompt) {
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
       let msg = err?.error?.message || `Ошибка API: ${response.status}`;
-      if (response.status === 429) msg = 'Quota exceeded (429)';
+      if (response.status === 429) msg = 'Лимит запросов исчерпан (Quota exceeded 429)';
+      else if (response.status === 504) msg = 'Тайм-аут на сервере Google (504 Deadline Exceeded). Файл слишком большой или сервер не успел ответить.';
+      else if (response.status === 503) msg = 'Серверы Google перегружены (503 Service Unavailable)';
+      else if (response.status >= 500) msg = `Ошибка на серверах Google (${response.status})`;
       throw new Error(msg);
     }
 
@@ -173,7 +178,9 @@ async function sendToGemini(base64Audio, apiKey, modelName, prompt) {
     return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
   } catch (err) {
     clearTimeout(timeoutId);
-    if (err.name === 'AbortError') throw new Error('Превышено время ожидания ответа от ИИ (Тайм-аут 2 мин)');
+    if (err.name === 'AbortError') {
+      throw new Error(`Превышено максимальное время ожидания (11 мин) или обрыв сети. [timeout]`);
+    }
     throw err;
   }
 }

@@ -173,6 +173,7 @@ async function handleAudioStop() {
   statusDiv.textContent = 'Аудио передано в фон для обработки... Можно закрывать окно.';
   recordBtn.disabled = true;
 
+  const durationSec = startTime ? Math.max(1, Math.round((Date.now() - startTime) / 1000)) : 10;
   const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
   const base64Data = await blobToBase64(audioBlob);
 
@@ -181,6 +182,7 @@ async function handleAudioStop() {
       chrome.runtime.sendMessage({
         action: 'PROCESS_AUDIO',
         audioBase64: base64Data,
+        duration: durationSec,
         tabId: tabs[0].id
       });
       setTimeout(() => window.close(), 1500); // Закрываем попап
