@@ -230,10 +230,15 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
         if (err.name === 'AbortError') {
            const action = activeTasks[tabId]?.action;
            if (action === 'CANCEL') throw new Error('Отменено пользователем');
-           if (action === 'SKIP_MODEL' || action === 'SKIP_KEY') {
+           if (action === 'SKIP_MODEL') {
+             if (activeTasks[tabId]) activeTasks[tabId].action = null;
              continue; // переходим к след. модели
            }
-           // Даже если action null, идем дальше
+           if (action === 'SKIP_KEY') {
+             if (activeTasks[tabId]) activeTasks[tabId].action = null;
+             break; // переходим к след. ключу
+           }
+           // Если это AbortError от таймаута сети и action = null
            continue; 
         }
 
@@ -244,6 +249,9 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
         }
       }
     }
+  }
+  if (lastError && lastError.name === 'AbortError') {
+      throw new Error('Перебор завершен: доступные модели (или ключи) закончились.');
   }
   throw lastError; // Если все упали
 }
