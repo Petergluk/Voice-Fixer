@@ -167,6 +167,8 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
   const queue = [initialModel, ...fallbackModels.filter(m => m !== initialModel)];
 
   let lastError;
+  let isFirstIteration = true;
+
   for (let k = 0; k < keys.length; k++) {
     const key = keys[k];
     logDebug(`sendWithFallback: Итерируем ключ ${k+1} из ${keys.length}`);
@@ -176,11 +178,45 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
         logDebug(`sendWithFallback: Отправка через ${currentModel} (ключ ${key.substring(0, 5)}...)`);
         console.log(`Попытка обработки через ${currentModel} (ключ ${key.substring(0, 5)}...)...`);
         
+        if (!isFirstIteration) {
+          logDebug(`sendWithFallback: Ожидание перед следующей моделью (3с)...`);
+          chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            func: showToast,
+            args: [`⏳ Ждем 3с... Далее: ${currentModel} (Ключ ${k+1}/${keys.length})`, false, true, true]
+          });
+          
+          await new Promise((resolve, reject) => {
+            const controller = new AbortController();
+            if (activeTasks[tabId]) {
+              if (activeTasks[tabId].action === 'CANCEL' || activeTasks[tabId].action === 'SKIP_MODEL') {
+                const err = new Error('Отменено');
+                err.name = 'AbortError';
+                return reject(err);
+              }
+              activeTasks[tabId].controller = controller;
+              activeTasks[tabId].action = null; 
+            }
+
+            const timeoutId = setTimeout(() => {
+              resolve();
+            }, 3000);
+
+            controller.signal.addEventListener('abort', () => {
+              clearTimeout(timeoutId);
+              const err = new Error('Aborted');
+              err.name = 'AbortError';
+              reject(err);
+            });
+          });
+        }
+        isFirstIteration = false;
+
         // Обновляем тост с названием текущей модели
         chrome.scripting.executeScript({
           target: { tabId: tabId },
           func: showToast,
-          args: [`🎙️ Voice Fixer (${currentModel}): Обрабатываем аудио...`, false, true, true]
+          args: [`🎙️ Обрабатываем... ${currentModel} (Ключ ${k+1}/${keys.length})`, false, true, true]
         });
 
         const text = await sendToGemini(base64Audio, key, currentModel, prompt, timeoutMs, tabId);
@@ -194,8 +230,11 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
         if (err.name === 'AbortError') {
            const action = activeTasks[tabId]?.action;
            if (action === 'CANCEL') throw new Error('Отменено пользователем');
-           if (action === 'SKIP_MODEL') continue; // переходим к след. модели
-           if (action === 'SKIP_KEY') break; // переходим к след. ключу
+           if (action === 'SKIP_MODEL' || action === 'SKIP_KEY') {
+             continue; // переходим к след. модели
+           }
+           // Даже если action null, идем дальше
+           continue; 
         }
 
         // Если проблема с ключом, лимитами или таймаутом сети - пробуем следующий ключ
@@ -221,6 +260,11 @@ async function sendToGemini(base64Audio, apiKey, modelName, prompt, timeoutMs, t
 
   const controller = new AbortController();
   if (activeTasks[tabId]) {
+      if (activeTasks[tabId].action === 'CANCEL' || activeTasks[tabId].action === 'SKIP_MODEL') {
+        const err = new Error('Отменено');
+        err.name = 'AbortError';
+        throw err;
+      }
       activeTasks[tabId].controller = controller;
       activeTasks[tabId].action = null; // сбросим текущее действие
   }
