@@ -183,14 +183,14 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
           chrome.scripting.executeScript({
             target: { tabId: tabId },
             func: showToast,
-            args: [`⏳ Ждем 3с... Далее: ${currentModel} (Ключ ${k+1}/${keys.length})`, false, true, true]
+            args: [`Смена: ${currentModel} (Ключ ${k+1}/${keys.length})`, false, true, true]
           });
           
           await new Promise((resolve, reject) => {
             const controller = new AbortController();
             if (activeTasks[tabId]) {
               if (activeTasks[tabId].action === 'CANCEL' || activeTasks[tabId].action === 'SKIP_MODEL') {
-                const err = new Error('Отменено');
+                const err = new Error('Пропуск модели/отмена');
                 err.name = 'AbortError';
                 return reject(err);
               }
@@ -219,7 +219,8 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
           args: [`🎙️ Обрабатываем... ${currentModel} (Ключ ${k+1}/${keys.length})`, false, true, true]
         });
 
-        const text = await sendToGemini(base64Audio, key, currentModel, prompt, timeoutMs, tabId);
+        const actualTimeoutMs = Math.min(timeoutMs, 270000); // Max 4.5 mins per request
+        const text = await sendToGemini(base64Audio, key, currentModel, prompt, actualTimeoutMs, tabId);
         // Сохраняем на всякий случай в память, чтобы не потерялось
         chrome.storage.local.set({ lastTranscription: text });
         return text;
@@ -251,7 +252,7 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
     }
   }
   if (lastError && lastError.name === 'AbortError') {
-      throw new Error('Перебор завершен: доступные модели (или ключи) закончились.');
+      throw new Error('Модели не ответили (перебор завершен). Попробуйте позже.');
   }
   throw lastError; // Если все упали
 }
@@ -269,7 +270,7 @@ async function sendToGemini(base64Audio, apiKey, modelName, prompt, timeoutMs, t
   const controller = new AbortController();
   if (activeTasks[tabId]) {
       if (activeTasks[tabId].action === 'CANCEL' || activeTasks[tabId].action === 'SKIP_MODEL') {
-        const err = new Error('Отменено');
+        const err = new Error('Пропуск модели/отмена');
         err.name = 'AbortError';
         throw err;
       }
