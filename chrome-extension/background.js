@@ -256,7 +256,10 @@ function insertTextIntoActiveElement(text) {
         }
         const btn = document.getElementById('vf-toast-copy-btn');
         btn.textContent = 'Успешно!';
-        setTimeout(() => { if (btn) btn.textContent = 'Скопировать'; }, 2000);
+        setTimeout(() => {
+          div.style.opacity = '0';
+          setTimeout(() => div.remove(), 300);
+        }, 800);
       });
       document.getElementById('vf-toast-close-btn').addEventListener('click', () => {
         div.style.opacity = '0';
@@ -277,7 +280,7 @@ function insertTextIntoActiveElement(text) {
       textarea.select();
       try {
         document.execCommand('copy');
-        toastDone('Текст в буфере (фокус потерян).', true);
+        toastDone('Текст уже скопирован в буфер (фокус потерян), но можно скопировать ещё раз:', true);
       } catch (e) {
         toastDone('Не удалось скопировать текст в буфер.', true);
       }
@@ -285,7 +288,7 @@ function insertTextIntoActiveElement(text) {
     };
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(() => {
-        toastDone('Текст в буфере (фокус потерян).', true);
+        toastDone('Текст уже скопирован в буфер (фокус потерян), но можно скопировать ещё раз:', true);
       }).catch(copyFallback);
     } else {
       copyFallback();
@@ -329,7 +332,7 @@ function insertTextIntoActiveElement(text) {
       textarea.select();
       try {
         document.execCommand('copy');
-        toastDone('Текст скопирован в буфер обмена!', true);
+        toastDone('Текст уже скопирован в буфер, можно скопировать повторно:', true);
       } catch (e) {
         toastDone('Не удалось скопировать текст в буфер.', true);
       }
@@ -337,7 +340,7 @@ function insertTextIntoActiveElement(text) {
     };
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(() => {
-        toastDone('Текст скопирован в буфер обмена!', true);
+        toastDone('Текст уже скопирован в буфер, можно скопировать повторно:', true);
       }).catch(copyFallback);
     } else {
       copyFallback();
