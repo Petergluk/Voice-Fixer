@@ -53,7 +53,8 @@ document.addEventListener('DOMContentLoaded', () => {
       systemPrompt: prompt || defaultPrompt,
       enableNotifications: notify,
       saveAudio: saveAudio,
-      debugEnabled: debug
+      debugEnabled: debug,
+      invalidKeys: []
     }, () => {
       const status = document.getElementById('status');
       status.textContent = '✅ Настройки успешно сохранены!';

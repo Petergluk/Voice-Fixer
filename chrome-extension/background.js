@@ -29,6 +29,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (tId && activeTasks[tId]) {
       activeTasks[tId].action = 'CANCEL';
       if (activeTasks[tId].controller) activeTasks[tId].controller.abort();
+    } else if (tId) {
+      chrome.scripting.executeScript({
+        target: { tabId: tId },
+        func: showToast,
+        args: [`Расшифровка отменена (или сброшена).`, false, false, false]
+      }).catch(e => console.error(e));
     }
   } else if (request.action === 'SKIP_MODEL_TASK') {
     const tId = sender.tab ? sender.tab.id : request.tabId;
@@ -36,6 +42,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (tId && activeTasks[tId]) {
       activeTasks[tId].action = 'SKIP_MODEL';
       if (activeTasks[tId].controller) activeTasks[tId].controller.abort();
+    } else if (tId) {
+      // SW перезапустился или таск потерян
+      logDebug(`SKIP_MODEL_TASK: task lost for tabId=${tId}`);
+      chrome.scripting.executeScript({
+        target: { tabId: tId },
+        func: showToast,
+        args: [`❌ Задача потеряна (перезапуск расширения). Попробуйте снова.`, true]
+      }).catch(e => console.error(e));
     }
   } else if (request.action === 'SKIP_KEY_TASK') {
     const tId = sender.tab ? sender.tab.id : request.tabId;
@@ -43,6 +57,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (tId && activeTasks[tId]) {
       activeTasks[tId].action = 'SKIP_KEY';
       if (activeTasks[tId].controller) activeTasks[tId].controller.abort();
+    } else if (tId) {
+      logDebug(`SKIP_KEY_TASK: task lost for tabId=${tId}`);
+      chrome.scripting.executeScript({
+        target: { tabId: tId },
+        func: showToast,
+        args: [`❌ Задача потеряна (перезапуск расширения). Попробуйте снова.`, true]
+      }).catch(e => console.error(e));
     }
   }
 });
@@ -159,7 +180,16 @@ async function processAudioInBackground(base64Audio, tabId, duration) {
 
 // Отправка с fallback перебором
 async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt, tabId, duration, timeoutMs) {
-  const keys = apiKeyString.split(/[\n,]+/).map(k => k.trim()).filter(k => k);
+  const state = await chrome.storage.local.get({ invalidKeys: [] });
+  const invalidKeys = new Set(state.invalidKeys || []);
+
+  const keysRaw = apiKeyString.split(/[\n,]+/).map(k => k.trim()).filter(k => k);
+  const keys = keysRaw.filter(k => !invalidKeys.has(k));
+
+  if (keysRaw.length > 0 && keys.length === 0) {
+      throw new Error(`Все указанные ключи (${keysRaw.length} шт.) были помечены системой как недействительные (ошибка ключа). Проверьте раздел настроек, исправьте ключи или обновите их.`);
+  }
+
   if (keys.length === 0) throw new Error('API ключ не задан. Зайдите в настройки.');
 
   const fallbackModels = ['gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-3.1-flash-lite'];
@@ -175,15 +205,19 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
     for (let i = 0; i < queue.length; i++) {
       const currentModel = queue[i];
       try {
-        logDebug(`sendWithFallback: Отправка через ${currentModel} (ключ ${key.substring(0, 5)}...)`);
-        console.log(`Попытка обработки через ${currentModel} (ключ ${key.substring(0, 5)}...)...`);
+        logDebug(`sendWithFallback: Отправка через ${currentModel} (ключ ...${key.slice(-4)} №${k+1})`);
+        console.log(`Попытка обработки через ${currentModel} (ключ ...${key.slice(-4)} №${k+1})...`);
         
         if (!isFirstIteration) {
           logDebug(`sendWithFallback: Ожидание перед следующей моделью (3с)...`);
+          let toastMsg = `Смена: ${currentModel} (Ключ ${k+1}/${keys.length})`;
+          if (lastError && lastError.message) {
+            toastMsg = `⚠️ ${lastError.message}. ` + toastMsg;
+          }
           chrome.scripting.executeScript({
             target: { tabId: tabId },
             func: showToast,
-            args: [`Смена: ${currentModel} (Ключ ${k+1}/${keys.length})`, false, true, true]
+            args: [toastMsg, false, true, true]
           });
           
           await new Promise((resolve, reject) => {
@@ -226,6 +260,7 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
         return text;
       } catch (err) {
         console.warn(`Ошибка при использовании ${currentModel}:`, err);
+        logDebug(`sendWithFallback: Ошибка (${currentModel}): ${err.message || 'Unknown err'}`);
         lastError = err;
         
         if (err.name === 'AbortError') {
@@ -245,6 +280,28 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
 
         // Если проблема с ключом, лимитами или таймаутом сети - пробуем следующий ключ
         const errMsg = err.message.toLowerCase();
+
+        // 400 Bad Request обычно используется для невалидных ключей
+        if (err.status === 400 && errMsg.includes('key')) {
+           invalidKeys.add(key);
+           await chrome.storage.local.set({ invalidKeys: Array.from(invalidKeys) });
+           logDebug(`sendWithFallback: API Key marked invalid: ...${key.slice(-4)}`);
+           
+           try {
+               const notifyState = await chrome.storage.local.get({ enableNotifications: true });
+               if (notifyState.enableNotifications) {
+                 chrome.notifications.create({
+                   type: 'basic',
+                   iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+                   title: 'Voice Fixer: Ошибка ключа API',
+                   message: `Внимание: ключ, оканчивающийся на ...${key.slice(-4)} (Ключ №${k+1}), недействителен (API-key error). Он добавлен в игнор-лист.`
+                 });
+               }
+           } catch(e) { console.warn(e); }
+
+           break; // skip to next key
+        }
+
         if (errMsg.includes('key') || errMsg.includes('quota') || errMsg.includes('429') || errMsg.includes('timeout') || errMsg.includes('тайм-аут') || errMsg.includes('504') || errMsg.includes('503') || errMsg.includes('пользователем')) {
              break; // переходим к следующему ключу
         }
@@ -296,17 +353,19 @@ async function sendToGemini(base64Audio, apiKey, modelName, prompt, timeoutMs, t
       else if (response.status === 504) msg = 'Тайм-аут на сервере Google (504 Deadline Exceeded). Файл слишком большой или сервер не успел ответить.';
       else if (response.status === 503) msg = 'Серверы Google перегружены (503 Service Unavailable)';
       else if (response.status >= 500) msg = `Ошибка на серверах Google (${response.status})`;
-      throw new Error(msg);
+      const errorObj = new Error(msg);
+      errorObj.status = response.status;
+      throw errorObj;
     }
 
     const data = await response.json();
     return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
   } catch (err) {
     clearTimeout(timeoutId);
-    if (err.name === 'AbortError') {
-      const action = activeTasks[tabId]?.action;
-      logDebug(`sendToGemini: AbortError received. action=${action}`);
-      if (action) throw err; // Пробросим дальше для обработки (cancel/skip)
+    const action = activeTasks[tabId]?.action;
+    if (err.name === 'AbortError' || action) {
+      logDebug(`sendToGemini: Abort/Action received. action=${action}, err=${err.name}`);
+      if (action) throw (err.name === 'AbortError' ? err : Object.assign(new Error(err.message), { name: 'AbortError' })); // Пробросим дальше для обработки (cancel/skip) как AbortError
       const maxMins = Math.round(timeoutMs / 60000);
       throw new Error(`Превышено максимальное время ожидания (${maxMins} мин) или обрыв сети. [timeout]`);
     }
@@ -369,14 +428,22 @@ function showToast(message, isError, isSticky = false, isProcessing = false) {
 
     setTimeout(() => {
       document.getElementById('vf-toast-skip-btn')?.addEventListener('click', () => {
-        chrome.runtime.sendMessage({ action: 'SKIP_MODEL_TASK' });
+        chrome.runtime.sendMessage({ action: 'SKIP_MODEL_TASK' }).catch(() => {});
         const btn = document.getElementById('vf-toast-skip-btn');
         if (btn) btn.style.opacity = '0.5';
         const msgEl = document.getElementById('vf-toast-msg');
-        if (msgEl) msgEl.textContent = 'Переключение...';
+        if (msgEl) {
+           msgEl.textContent = 'Переключение...';
+           // Failsafe if background worker is stuck
+           setTimeout(() => {
+              if (document.getElementById('vf-toast-msg')?.textContent === 'Переключение...') {
+                 showToast('❌ Ошибка: Нет ответа (сбой расширения).', true);
+              }
+           }, 8000);
+        }
       });
       document.getElementById('vf-toast-cancel-btn')?.addEventListener('click', () => {
-        chrome.runtime.sendMessage({ action: 'CANCEL_TASK' });
+        chrome.runtime.sendMessage({ action: 'CANCEL_TASK' }).catch(() => {});
         const msgEl = document.getElementById('vf-toast-msg');
         if (msgEl) msgEl.textContent = 'Отмена...';
         div.style.opacity = '0';
