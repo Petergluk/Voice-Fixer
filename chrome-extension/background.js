@@ -1,5 +1,15 @@
 let activeTasks = {};
 
+async function logDebug(msg) {
+  const data = await chrome.storage.local.get({ debugEnabled: false, debugLog: [] });
+  if (!data.debugEnabled) return;
+  const log = data.debugLog;
+  log.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
+  if (log.length > 500) log.shift();
+  await chrome.storage.local.set({ debugLog: log });
+  console.log(`[DEBUG] ${msg}`);
+}
+
 async function logErrorOut(errMessage) {
   const data = await chrome.storage.local.get({ errorLog: [] });
   const log = data.errorLog;
@@ -10,22 +20,26 @@ async function logErrorOut(errMessage) {
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'PROCESS_AUDIO') {
+    logDebug(`message PROCESS_AUDIO received`);
     processAudioInBackground(request.audioBase64, request.tabId, request.duration);
     sendResponse({ status: "started" });
   } else if (request.action === 'CANCEL_TASK') {
     const tId = sender.tab ? sender.tab.id : request.tabId;
+    logDebug(`message CANCEL_TASK for tabId=${tId}`);
     if (tId && activeTasks[tId]) {
       activeTasks[tId].action = 'CANCEL';
       if (activeTasks[tId].controller) activeTasks[tId].controller.abort();
     }
   } else if (request.action === 'SKIP_MODEL_TASK') {
     const tId = sender.tab ? sender.tab.id : request.tabId;
+    logDebug(`message SKIP_MODEL_TASK for tabId=${tId}`);
     if (tId && activeTasks[tId]) {
       activeTasks[tId].action = 'SKIP_MODEL';
       if (activeTasks[tId].controller) activeTasks[tId].controller.abort();
     }
   } else if (request.action === 'SKIP_KEY_TASK') {
     const tId = sender.tab ? sender.tab.id : request.tabId;
+    logDebug(`message SKIP_KEY_TASK for tabId=${tId}`);
     if (tId && activeTasks[tId]) {
       activeTasks[tId].action = 'SKIP_KEY';
       if (activeTasks[tId].controller) activeTasks[tId].controller.abort();
@@ -35,6 +49,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 async function processAudioInBackground(base64Audio, tabId, duration) {
   try {
+    logDebug(`processAudioInBackground: start tabId=${tabId}, duration=${duration}`);
     const result = await chrome.storage.local.get({
       geminiApiKey: '',
       geminiModel: 'gemini-3-flash-preview',
@@ -110,7 +125,18 @@ async function processAudioInBackground(base64Audio, tabId, duration) {
   } catch (err) {
     console.error("Voice Fixer Background Error:", err);
     logErrorOut(err.message);
+    logDebug(`processAudioInBackground catch: ${err.message}`);
     
+    // Если мы отменили руками, не показывать как ошибку API красным
+    if (err.message.includes('Отменено пользователем')) {
+      chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        func: showToast,
+        args: [`Расшифровка отменена.`, false, false, false]
+      });
+      return;
+    }
+
     chrome.scripting.executeScript({
       target: { tabId: tabId },
       func: showToast,
@@ -143,9 +169,11 @@ async function sendWithFallback(base64Audio, apiKeyString, initialModel, prompt,
   let lastError;
   for (let k = 0; k < keys.length; k++) {
     const key = keys[k];
+    logDebug(`sendWithFallback: Итерируем ключ ${k+1} из ${keys.length}`);
     for (let i = 0; i < queue.length; i++) {
       const currentModel = queue[i];
       try {
+        logDebug(`sendWithFallback: Отправка через ${currentModel} (ключ ${key.substring(0, 5)}...)`);
         console.log(`Попытка обработки через ${currentModel} (ключ ${key.substring(0, 5)}...)...`);
         
         // Обновляем тост с названием текущей модели
@@ -224,10 +252,12 @@ async function sendToGemini(base64Audio, apiKey, modelName, prompt, timeoutMs, t
     clearTimeout(timeoutId);
     if (err.name === 'AbortError') {
       const action = activeTasks[tabId]?.action;
+      logDebug(`sendToGemini: AbortError received. action=${action}`);
       if (action) throw err; // Пробросим дальше для обработки (cancel/skip)
       const maxMins = Math.round(timeoutMs / 60000);
       throw new Error(`Превышено максимальное время ожидания (${maxMins} мин) или обрыв сети. [timeout]`);
     }
+    logDebug(`sendToGemini: Error received. ${err.message}`);
     throw err;
   }
 }
@@ -252,30 +282,50 @@ function showToast(message, isError, isSticky = false, isProcessing = false) {
     div.style.wordWrap = 'break-word';
     document.body.appendChild(div);
   }
-  div.style.background = isError ? '#dc2626' : '#16a34a';
+  div.style.background = isError ? '#dc2626' : (isProcessing ? '#1d4ed8' : '#16a34a');
   div.style.color = 'white';
   div.style.opacity = '1';
 
   clearTimeout(window.vfToastTimeout);
+  if (window.vfToastInterval) clearInterval(window.vfToastInterval);
 
   if (isProcessing) {
     div.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-        <span>${message}</span>
+        <span id="vf-toast-msg">${message}</span>
+        <span id="vf-toast-timer" style="font-family: monospace; font-size: 13px; opacity: 0.8;">00:00</span>
         <div style="display: flex; gap: 4px;">
           <button id="vf-toast-skip-btn" title="Попробовать другую модель/ключ" style="background: transparent; color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 14px; position: relative;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='transparent'">⏭️</button>
           <button id="vf-toast-cancel-btn" title="Отменить" style="background: transparent; color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 14px;" onmouseover="this.style.background='rgba(255,255,255,0.2)'" onmouseout="this.style.background='transparent'">✖</button>
         </div>
       </div>
     `;
+
+    const startT = Date.now();
+    window.vfToastInterval = setInterval(() => {
+      const el = document.getElementById('vf-toast-timer');
+      if (!el) {
+         clearInterval(window.vfToastInterval);
+         return;
+      }
+      const s = Math.floor((Date.now() - startT) / 1000);
+      const m = Math.floor(s / 60);
+      const sec = s % 60;
+      el.textContent = `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+    }, 1000);
+
     setTimeout(() => {
       document.getElementById('vf-toast-skip-btn')?.addEventListener('click', () => {
         chrome.runtime.sendMessage({ action: 'SKIP_MODEL_TASK' });
         const btn = document.getElementById('vf-toast-skip-btn');
         if (btn) btn.style.opacity = '0.5';
+        const msgEl = document.getElementById('vf-toast-msg');
+        if (msgEl) msgEl.textContent = 'Переключение...';
       });
       document.getElementById('vf-toast-cancel-btn')?.addEventListener('click', () => {
         chrome.runtime.sendMessage({ action: 'CANCEL_TASK' });
+        const msgEl = document.getElementById('vf-toast-msg');
+        if (msgEl) msgEl.textContent = 'Отмена...';
         div.style.opacity = '0';
         setTimeout(() => div.remove(), 300);
       });

@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     systemPrompt: defaultPrompt,
     enableNotifications: true,
     saveAudio: false,
+    debugEnabled: false,
     lastTranscription: '',
     errorLog: []
   }, (result) => {
@@ -24,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('promptText').value = result.systemPrompt;
     document.getElementById('enableNotifications').checked = result.enableNotifications;
     document.getElementById('saveAudio').checked = result.saveAudio;
+    document.getElementById('debugEnabled').checked = result.debugEnabled;
     document.getElementById('lastTranscription').value = result.lastTranscription || 'Нет данных';
     
     const errTextarea = document.getElementById('errorLog');
@@ -42,6 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const prompt = document.getElementById('promptText').value.trim();
     const notify = document.getElementById('enableNotifications').checked;
     const saveAudio = document.getElementById('saveAudio').checked;
+    const debug = document.getElementById('debugEnabled').checked;
 
     chrome.storage.local.set({ 
       geminiApiKey: apiKey,
@@ -49,13 +52,32 @@ document.addEventListener('DOMContentLoaded', () => {
       geminiTimeout: timeout,
       systemPrompt: prompt || defaultPrompt,
       enableNotifications: notify,
-      saveAudio: saveAudio
+      saveAudio: saveAudio,
+      debugEnabled: debug
     }, () => {
       const status = document.getElementById('status');
       status.textContent = '✅ Настройки успешно сохранены!';
       setTimeout(() => {
         status.textContent = '';
       }, 3000);
+    });
+  });
+
+  document.getElementById('downloadDebug').addEventListener('click', () => {
+    chrome.storage.local.get({ debugLog: [] }, (data) => {
+      const text = data.debugLog.join('\n') || 'Логи пусты.';
+      const blob = new Blob([text], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `voice_fixer_debug_${Date.now()}.txt`;
+      a.click();
+    });
+  });
+
+  document.getElementById('clearDebug').addEventListener('click', () => {
+    chrome.storage.local.set({ debugLog: [] }, () => {
+      alert('Логи очищены');
     });
   });
 
