@@ -1,0 +1,8 @@
+{
+  "name": "Gemini Транскрибатор",
+  "description": "Простейшее приложение для записи и транскрибации аудио с использованием Gemini Flash. Включает настраиваемый системный промпт и выбор модели.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": []
+}

@@ -1,53 +1,33 @@
-# Voice Fixer
+# PuuNote Plugin Sandbox
 
-Voice Fixer — это приложение и плагин для транскрибации и автоматической корректуры голосовых аудиозаписей с помощью нейросетей от Google (Gemini).
 
-## Описание
+This directory contains a standalone sandbox environment designed specifically to help AI coding assistants (like Cursor, Claude, ChatGPT, etc.) write and test plugins for PuuNote.
 
-Voice Fixer создан для тех, кто хочет надиктовывать свои мысли, заметки, рабочие задачи или даже медитации и сразу же получать чистый, структурированный и исправленный текст. Промпт, заложенный в приложение, убирает слова-паразиты, логично расставляет знаки препинания, разбивает длинные тексты на абзацы и исправляет ошибки распознавания, сохраняя при этом оригинальный тон и смысл.
+## Why this Sandbox exists?
 
-### Как работает плагин:
-1. Вы нажимаете кнопку записи (в виде отдельного окна приложения или прямо из карточки).
-2. Записываете свой голос (во время записи можно видеть красивый индикатор входного сигнала и таймер).
-3. Останавливаете запись нажатием кнопки Стоп или **клавиши Пробел**.
-4. Аудио отправляется через Gemini API (модель \`gemini-3.1-flash-lite\`).
-5. Расшифрованный и очищенный от мусора текст возвращается в виде новой карточки, вложенной в ту, откуда была вызвана запись (либо в корневую, если вызвана глобально).
+PuuNote is a complex React application with its own state management, tree structures, and API constraints. When you are writing a new plugin using an AI model, providing the full original codebase might be overwhelming or unnecessary. 
 
-## Возможности
+Instead, this sandbox provides:
+1. **A mock `pluginApi.ts`**: Simulating the plugin registration and behavior inside the main app.
+2. **A clean `App.tsx` container**: Rendering a UI layout identical to the main app specifically to render the test plugin components, actions, header buttons, and UI overlays.
+3. **Copy of core documentation**: The `AGENTS.md` and `docs/PLUGIN_API.md` files are placed here so the AI knows all constraints, API models, and data structures.
 
-- **Google Chrome Расширение**: 
-  - Диктуйте прямо в браузере в любое активное поле ввода (Gmail, Notion, мессенджеры и т.п.). Исходный код расширения лежит в папке \`/chrome-extension/\`. Вы можете установить его вручную в браузере.
-- **Stand-alone версия**: Полноценное веб-приложение для записи звука и его транскрипции (работает на базе React + Tailwind).
-- **Интеграция с PuuNote (Plugin)**: 
-  - Глобальная команда: `Start Voice Recording (Root Node)`
-  - Кнопка в панели конкретной карточки: `Записать аудио в карточку (Voice Fixer)`
-- **Удобное управление**:
-  - Красивое модальное окно во время записи с анимацией и блюром.
-  - Визуализатор звуковой волны в реальном времени.
-  - Отображение текущего используемого микрофона.
-  - Остановка записи по горячей клавише пробела (Space) в любом месте приложения (исключая текстовые поля).
-  - Таймер длительности записи.
-- **Интеллектуальная обработка**:
-  - Коррекция синтаксиса и орфографии.
-  - Разбивка на абзацы и логические завершения мыслей.
-  - Устранение слов-паразитов ("как бы", "ну" и т.п.).
+## How to use
 
-## Использование
+1. Give the AI context to this folder (e.g., add `/plugin-sandbox` to context in Cursor or ZIP the folder).
+2. Prompt the AI: *"Create a new PuuNote plugin [name] in the `src/plugins/` directory of this sandbox. Follow the API from `docs/PLUGIN_API.md` and use `utils/aiModels.ts` to access AI if needed."*
+3. The AI will write the plugin inside `plugin-sandbox/src/plugins/your-plugin/`.
+4. You can run the sandbox independently using:
+   ```bash
+   npm install
+   npm run dev
+   ```
+5. Once your plugin behaves as expected in the UI dummy elements shown in the sandbox, simply copy the `your-plugin` directory over to `src/plugins/` in the main PuuNote repository.
 
-Для работы транскрибатора потребуется API ключ **Google Gemini**. 
-При первом запуске приложения/плагина у вас появится всплывающее диалоговое окно (prompt) с предложением ввести API ключ. Этот ключ надежно сохраняется только локально в вашем браузере (`localStorage`).
+## Sandbox Structure
 
-## Структура проекта
-
-- `src/App.tsx` - Главное приложение-демонстратор (Stand-alone вариант Voice Fixer).
-- `src/voice-fixer-plugin.tsx` - Сам плагин для экспорта и встраивания в вашу систему заметок (PuuNote).
-- `src/index.css` - Стили на базе Tailwind CSS для плавных анимаций и современного внешнего вида.
-
-## Технологии
-
-- **React 18+**
-- **Vite**
-- **Tailwind CSS** (стили и анимации, например `animate-in fade-in duration-200`)
-- **Lucide-react** (векторные иконки)
-- **Web Audio API** и **MediaRecorder** (для захвата и анализа звука из микрофона)
-- **Google Gemini API** (генерация контента из загруженного Base64 аудио)
+- `/src/App.tsx` - Emulates the main application UI, showing Header, Main Space (Card), and Footer where hooks and plugin actions register automatically.
+- `/src/plugins/registry.ts` - The mock Plugin API. Exposes the types and registry dummy methods similar to what the main app uses.
+- `/src/utils/aiModels.ts` - A mocked utility replicating the AI module detailed in `AGENTS.md` for proper model-agnostic text generative capabilities within your plugins.
+- `/docs/PLUGIN_API.md` - Complete reference of the Plugin implementation interface.
+- `/AGENTS.md` - Documentation detailing AI and component styles conventions.

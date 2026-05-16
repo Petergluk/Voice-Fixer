@@ -1,1 +1,15 @@
 @import "tailwindcss";
+
+
+@theme {
+  --color-app-bg: #f3f4f6;
+  --color-app-card: #ffffff;
+  --color-app-card-hover: #f9fafb;
+  --color-app-border: #e5e7eb;
+  --color-app-text-primary: #111827;
+  --color-app-text-secondary: #4b5563;
+  --color-app-text-muted: #9ca3af;
+  --color-app-accent: #3b82f6;
+  --color-app-input-bg: #f9fafb;
+  --color-app-panel: #ffffff;
+}
