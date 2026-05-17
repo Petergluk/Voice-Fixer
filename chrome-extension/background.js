@@ -324,27 +324,43 @@ async function sendToGemini(base64Audio, apiKey, modelName, prompt, timeoutMs, t
     generationConfig: { temperature: 0.2 }
   };
 
-  const controller = new AbortController();
+  const userController = new AbortController();
   if (activeTasks[tabId]) {
       if (activeTasks[tabId].action === 'CANCEL' || activeTasks[tabId].action === 'SKIP_MODEL') {
         const err = new Error('Пропуск модели/отмена');
         err.name = 'AbortError';
         throw err;
       }
-      activeTasks[tabId].controller = controller;
+      activeTasks[tabId].controller = userController;
       activeTasks[tabId].action = null; // сбросим текущее действие
   }
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  // Надежный таймаут (не засыпает при SleepMode)
+  let combinedSignal = userController.signal;
+  let timeoutController = null;
+  let timeoutId = null;
+
+  if (typeof AbortSignal.timeout === 'function' && typeof AbortSignal.any === 'function') {
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    combinedSignal = AbortSignal.any([userController.signal, timeoutSignal]);
+  } else {
+    // Фолбэк для старых версий Chrome
+    timeoutController = new AbortController();
+    timeoutId = setTimeout(() => timeoutController.abort(new Error("TimeoutError")), timeoutMs);
+    combinedSignal = typeof AbortSignal.any === 'function' 
+      ? AbortSignal.any([userController.signal, timeoutController.signal])
+      : userController.signal; // Если совсем старый хром, просто верим в лучшее
+  }
 
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-      signal: controller.signal
+      signal: combinedSignal
     });
     
-    clearTimeout(timeoutId);
+    if (timeoutId) clearTimeout(timeoutId);
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
@@ -361,14 +377,27 @@ async function sendToGemini(base64Audio, apiKey, modelName, prompt, timeoutMs, t
     const data = await response.json();
     return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
   } catch (err) {
-    clearTimeout(timeoutId);
+    if (timeoutId) clearTimeout(timeoutId);
+    
     const action = activeTasks[tabId]?.action;
-    if (err.name === 'AbortError' || action) {
-      logDebug(`sendToGemini: Abort/Action received. action=${action}, err=${err.name}`);
-      if (action) throw (err.name === 'AbortError' ? err : Object.assign(new Error(err.message), { name: 'AbortError' })); // Пробросим дальше для обработки (cancel/skip) как AbortError
-      const maxMins = Math.round(timeoutMs / 60000);
-      throw new Error(`Превышено максимальное время ожидания (${maxMins} мин) или обрыв сети. [timeout]`);
+    
+    // Проверка нативный TimeoutError или наш кастомный
+    const isTimeout = err.name === 'TimeoutError' || (timeoutController && timeoutController.signal.aborted);
+    const isUserAbort = err.name === 'AbortError' && !isTimeout;
+
+    if (isTimeout && !action) {
+       const maxMins = +(timeoutMs / 60000).toFixed(1);
+       throw new Error(`Превышено максимальное время ожидания (${maxMins} мин) или обрыв сети. [timeout]`);
     }
+
+    if (isUserAbort || action) {
+      logDebug(`sendToGemini: Abort/Action received. action=${action}, err=${err.name}`);
+      if (action) {
+         throw Object.assign(new Error(err.message), { name: 'AbortError' }); 
+      }
+      throw err;
+    }
+    
     logDebug(`sendToGemini: Error received. ${err.message}`);
     throw err;
   }
