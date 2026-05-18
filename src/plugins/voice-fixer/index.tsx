@@ -123,18 +123,18 @@ function RecordingOverlayComponent({
       
       <div className="flex items-center gap-2">
         <button
-          onClick={onCancel}
-          className="p-2 rounded-xl hover:bg-app-card-hover text-app-text-secondary transition-colors"
-          title="Отмена"
-        >
-          <X size={20} />
-        </button>
-        <button
           onClick={onStop}
           className="px-4 py-2 bg-app-accent hover:bg-app-accent/90 text-white rounded-xl font-medium flex items-center gap-2 shadow-sm transition-all active:scale-95"
         >
           <Square size={16} className="fill-white" />
           <span>Готово</span>
+        </button>
+        <button
+          onClick={onCancel}
+          className="p-2 rounded-xl bg-app-card-hover text-app-text-secondary hover:bg-red-500 hover:text-black dark:hover:text-black transition-colors"
+          title="Сброс"
+        >
+          <X size={20} />
         </button>
       </div>
     </div>
@@ -170,13 +170,18 @@ async function startRecording(nodeId: string) {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     
-    let defaultPrompt = `Ты транскрибатор. Твоя задача — дословно перевести аудио в текст. 
-ПРАВИЛА:
-1. Расставь знаки препинания и заглавные буквы.
-2. Исправь слова, если они явно неправильно распознаны.
-3. Удали только звуки хезитации (э-э, а-а, м-м) и слова-паразиты (ну, как бы, типа, собственно), если они не несут смысла.
-4. СТРОГО ЗАПРЕЩЕНО: перефразировать, изменять порядок слов, сокращать или менять структуру предложений. Сохраняй оригинальную речь, тон и стиль автора.
-Выведи ТОЛЬКО готовый текст без предисловий и форматирования.`;
+    let defaultPrompt = `Ты расшифровщик и корректор текста. Твоя специализация - транскрипт аудиофайлов, вычитка, очистка, оптимизация расшифровок разговорной речи. 
+Задачи:
+- исправить ошибки распознавания по смыслу.
+- расставить знаки препинания, орфографию.
+- убрать слова-паразиты (как бы, ну, эээ, собственно).
+- разбить длинные предложения и абзацы для читабельности.
+
+!IMPORTANT! Ты сохраняешь полное содержание и структуру исходного текста. Ты никогда не редактируешь и не корректируешь смыслы, лишь слегка оптимизируешь их изложение.
+
+!IMPORTANT! При оптимизации текста сохраняй оригинальный тон и стиль.  Например, при расшифровке аудио-практик, избегай замены  разрешающих формулировок, таких как «можно», «и может быть» - конструкциями в повелительном наклонении. Например, не надо заменять "И можно начать мягко раскачивать дыхание" на повелительное "Начните раскачивать дыхание". Сохраняй предполагаемый уровень взаимодействия говорящего с аудиторией. Не надо смягчать, меняя «бабы»  на «женщины», не надо ужесточать меняя «нахер» на «нахуй», твоя задача очистить мусор, не меняя стиль и тон.
+
+Выведи ТОЛЬКО конечный чистый текст. Никаких префиксов вроде "Вот текст:" не нужно.`;
     
     let bitrate = parseInt(localStorage.getItem("VOICE_FIXER_BITRATE") || "32000", 10);
     if (isNaN(bitrate)) bitrate = 32000;
@@ -391,20 +396,20 @@ function VoiceFixerSettings() {
         </select>
       </label>
 
-      <label className="flex flex-col gap-1 text-sm text-app-text-primary">
-        <span>Формат сохранения</span>
-        <select 
-          value={structureMode}
-          onChange={(e) => setStructureMode(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg border border-app-border bg-app-input-bg text-app-text-primary focus:ring-1 focus:ring-inset focus:ring-app-accent focus:outline-none text-sm"
-        >
-          <option value="single">Одним блоком текста</option>
-          <option value="split">Разбить на карточки (каждый абзац - отдельная карточка)</option>
-        </select>
+      <div className="flex flex-col gap-1">
+        <label className="flex items-center gap-2 text-sm text-app-text-primary">
+          <input 
+            type="checkbox"
+            checked={structureMode === "split"}
+            onChange={(e) => setStructureMode(e.target.checked ? "split" : "single")}
+            className="rounded border border-app-border text-app-accent focus:ring-1 focus:ring-inset focus:ring-app-accent focus:outline-none"
+          />
+          <span>Разбивать текст на карточки (по абзацам)</span>
+        </label>
         <span className="text-xs text-app-text-secondary opacity-70">
-          При выборе «В текущую карточку» опция разбиения на карточки игнорируется.
+          При выборе «В текущую карточку» эта опция игнорируется.
         </span>
-      </label>
+      </div>
 
       <label className="flex flex-col gap-1 text-sm text-app-text-primary">
         <span>Системный промпт</span>
@@ -439,6 +444,26 @@ const voiceFixerPlugin: PluginDefinition = {
   init: (api) => {
     pluginApi = api;
     console.log("🎙️ Voice Fixer Plugin Initialized");
+    
+    // Глобально слушаем Cmd/Ctrl+Shift+X
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.code === "KeyX") {
+        e.preventDefault();
+        if (activeRecordingNodeId) {
+          stopRecording();
+        } else {
+          const actNodeId = pluginApi?.document?.getActiveNodeId?.();
+          if (actNodeId) {
+            startRecording(actNodeId);
+          } else {
+            pluginApi?.toast?.("Сначала выберите карточку для записи", "error");
+          }
+        }
+      }
+    };
+    
+    window.addEventListener("keydown", handleKeyDown);
+    (window as any).__vf_keydown = handleKeyDown;
   },
 
   unload: () => {
@@ -446,7 +471,30 @@ const voiceFixerPlugin: PluginDefinition = {
       mediaRecorder.stop();
     }
     unmountOverlay();
+    if ((window as any).__vf_keydown) {
+      window.removeEventListener("keydown", (window as any).__vf_keydown);
+    }
   },
+
+  commands: [
+    {
+      id: "vf-start-command",
+      label: "Начать/остановить диктовку (Voice Fixer)",
+      hotkey: "Cmd+Shift+X",
+      execute: () => {
+        if (activeRecordingNodeId) {
+          stopRecording();
+        } else {
+          const actNodeId = pluginApi?.document?.getActiveNodeId?.();
+          if (actNodeId) {
+            startRecording(actNodeId);
+          } else {
+            pluginApi?.toast?.("Сначала выберите карточку для записи", "error");
+          }
+        }
+      }
+    }
+  ],
 
   cardActions: [
     {
