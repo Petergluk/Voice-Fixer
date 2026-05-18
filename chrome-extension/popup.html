@@ -1,116 +1,231 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-  <meta charset="utf-8">
-  <title>Voice Fixer</title>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: #1e3a8a;
-    }
-    body { 
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-      width: 250px; 
-    }
-    .app-container {
-      display: flex; 
-      flex-direction: column; 
-      align-items: center; 
-      background: #1e3a8a; /* Тёмно-синий фон */
-      color: #f8fafc;
-      border-radius: 12px;
-      padding: 16px;
-      box-sizing: border-box;
-    }
-    h3 { margin: 0 0 16px 0; color: #f8fafc; font-size: 16px; display: flex; align-items: center; gap: 8px;}
-    #recordBtn {
-      width: 100%; 
-      padding: 12px; 
-      font-size: 14px; 
-      font-weight: 500;
-      background-color: #f97316; 
-      color: white; 
-      border: none; 
-      border-radius: 5px; 
-      cursor: pointer; 
-      margin-bottom: 12px; 
-      transition: background-color 0.2s, transform 0.1s;
-    }
-    #recordBtn:active { transform: scale(0.98); }
-    #recordBtn:disabled { background-color: #475569; cursor: not-allowed; }
-    
-    #recordBtn.recording {
-      background-color: #ea580c;
-      animation: pulse 1.5s infinite ease-in-out;
-    }
-    @keyframes pulse {
-      0% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.8; transform: scale(0.98); }
-      100% { opacity: 1; transform: scale(1); }
-    }
-    
-    #status { font-size: 12px; color: #cbd5e1; text-align: center; min-height: 36px; line-height: 1.4; margin-bottom: 8px;}
-    #timer { font-family: "JetBrains Mono", monospace; font-size: 20px; font-weight: 600; color: #f8fafc; margin-bottom: 12px; display: none; }
-    
-    #visualizer { width: 100%; height: 40px; border-radius: 5px; background: #334155; margin-bottom: 12px; display: none; }
+  <head>
+    <meta charset="utf-8" />
+    <title>Voice Fixer</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #1e3a8a;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        width: 250px;
+      }
+      .app-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: #1e3a8a; /* Тёмно-синий фон */
+        color: #f8fafc;
+        border-radius: 12px;
+        padding: 16px;
+        box-sizing: border-box;
+      }
+      h3 {
+        margin: 0 0 16px 0;
+        color: #f8fafc;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      #recordBtn {
+        width: 100%;
+        padding: 12px;
+        font-size: 14px;
+        font-weight: 500;
+        background-color: #f97316;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        margin-bottom: 12px;
+        transition:
+          background-color 0.2s,
+          transform 0.1s;
+      }
+      #recordBtn:active {
+        transform: scale(0.98);
+      }
+      #recordBtn:disabled {
+        background-color: #475569;
+        cursor: not-allowed;
+      }
 
-    .controls-recording { display: none; gap: 16px; width: 100%; justify-content: center; margin-bottom: 12px; }
-    .icon-btn { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; border: none; cursor: pointer; transition: all 0.2s; }
-    .btn-stop { background: #f97316; color: white; }
-    .btn-stop:hover { background: #ea580c; transform: scale(1.05); }
-    .btn-stop:active { transform: scale(0.95); }
-    .btn-cancel { background: #3b82f6; color: white; }
-    .btn-cancel:hover { background: #2563eb; transform: scale(1.05); }
-    .btn-cancel:active { transform: scale(0.95); }
+      #recordBtn.recording {
+        background-color: #ea580c;
+        animation: pulse 1.5s infinite ease-in-out;
+      }
+      @keyframes pulse {
+        0% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 0.8;
+          transform: scale(0.98);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
 
-    .loader { 
-      display: none; 
+      #status {
+        font-size: 12px;
+        color: #cbd5e1;
+        text-align: center;
+        min-height: 36px;
+        line-height: 1.4;
+        margin-bottom: 8px;
+      }
+      #timer {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 20px;
+        font-weight: 600;
+        color: #f8fafc;
+        margin-bottom: 12px;
+        display: none;
+      }
 
-      border: 2px solid #f3f3f3; 
-      border-radius: 50%; 
-      border-top: 2px solid #3b82f6; 
-      width: 18px; 
-      height: 18px; 
-      animation: spin 1s linear infinite; 
-      margin: 0 auto 12px; 
-    }
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    
-    #settingsLink { 
-      font-size: 12px; 
-      color: #6b7280; 
-      cursor: pointer; 
-      text-decoration: underline; 
-      margin-top: 8px; 
-      transition: color 0.2s;
-    }
-    #settingsLink:hover { color: #111827; }
-  </style>
-</head>
-<body>
-  <div class="app-container">
-    <h3><span style="font-size: 18px">🎙️</span> Voice Fixer</h3>
-    
-    <div id="timer">00:00</div>
-    <canvas id="visualizer"></canvas>
-    
-    <div style="width: 100%; margin-bottom: 12px;" id="controls-start">
-      <button id="recordBtn" class="btn-record" title="Space или Cmd/Ctrl+Shift+X">Начать запись</button>
+      #visualizer {
+        width: 100%;
+        height: 40px;
+        border-radius: 5px;
+        background: #334155;
+        margin-bottom: 12px;
+        display: none;
+      }
+
+      .controls-recording {
+        display: none;
+        gap: 16px;
+        width: 100%;
+        justify-content: center;
+        margin-bottom: 12px;
+      }
+      .icon-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .btn-stop {
+        background: #f97316;
+        color: white;
+      }
+      .btn-stop:hover {
+        background: #ea580c;
+        transform: scale(1.05);
+      }
+      .btn-stop:active {
+        transform: scale(0.95);
+      }
+      .btn-cancel {
+        background: #3b82f6;
+        color: white;
+      }
+      .btn-cancel:hover {
+        background: #2563eb;
+        transform: scale(1.05);
+      }
+      .btn-cancel:active {
+        transform: scale(0.95);
+      }
+
+      .loader {
+        display: none;
+
+        border: 2px solid #f3f3f3;
+        border-radius: 50%;
+        border-top: 2px solid #3b82f6;
+        width: 18px;
+        height: 18px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 12px;
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      #settingsLink {
+        font-size: 12px;
+        color: #6b7280;
+        cursor: pointer;
+        text-decoration: underline;
+        margin-top: 8px;
+        transition: color 0.2s;
+      }
+      #settingsLink:hover {
+        color: #111827;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-container">
+      <h3><span style="font-size: 18px">🎙️</span> Voice Fixer</h3>
+
+      <div id="timer">00:00</div>
+      <canvas id="visualizer"></canvas>
+
+      <div style="width: 100%; margin-bottom: 12px" id="controls-start">
+        <button
+          id="recordBtn"
+          class="btn-record"
+          title="Space или Cmd/Ctrl+Shift+X"
+        >
+          Начать запись
+        </button>
+      </div>
+
+      <div class="controls-recording" id="controls-recording">
+        <button
+          id="stopBtn"
+          class="icon-btn btn-stop"
+          title="Остановить и расшифровать (Пробел)"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="6" width="12" height="12" rx="2"></rect>
+          </svg>
+        </button>
+        <button
+          id="cancelBtn"
+          class="icon-btn btn-cancel"
+          title="Отменить запись (Esc)"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div id="status">Нажмите кнопку, чтобы начать диктовку.</div>
     </div>
 
-    <div class="controls-recording" id="controls-recording">
-      <button id="stopBtn" class="icon-btn btn-stop" title="Остановить и расшифровать (Пробел)">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>
-      </button>
-      <button id="cancelBtn" class="icon-btn btn-cancel" title="Отменить запись (Esc)">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-      </button>
-    </div>
-    
-    <div id="status">Нажмите кнопку, чтобы начать диктовку.</div>
-  </div>
-  
-  <script src="popup.js"></script>
-</body>
+    <script src="popup.js"></script>
+  </body>
 </html>

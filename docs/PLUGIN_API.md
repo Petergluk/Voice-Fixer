@@ -3,7 +3,6 @@
 Welcome to the PuuNote Plugin Developer Guide. This document provides everything you need to know to write a plugin for the application.
 
 ## Overview
-
 Plugins in PuuNote are objects implementing the `PluginDefinition` interface. They are registered dynamically during app initialization. 
 
 A plugin can:

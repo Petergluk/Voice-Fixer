@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import type { PluginDefinition, PluginAPI } from "../registry";
 import { Sparkles, FileUp, Settings, TerminalSquare, AlertCircle } from "lucide-react";
 
-// Простой React-компонент для настроек плагина
+// Простой React-компонент для настроек плагина 
 function MyPluginSettings() {
   const [magic, setMagic] = useState(() => pluginApi?.settings?.get('magic_enabled', false));
   const [apiKey, setApiKey] = useState(() => pluginApi?.settings?.get('api_key', ''));
@@ -13,25 +13,25 @@ function MyPluginSettings() {
         Это демонстрационный компонент настроек плагина. Вы можете использовать любые React хуки (useState, useEffect и т.д.) здесь.
       </p>
       <label className="flex items-center gap-2 text-sm text-app-text-primary">
-        <input 
-          type="checkbox" 
+        <input
+          type="checkbox"
           checked={magic}
           onChange={(e) => {
             setMagic(e.target.checked);
             pluginApi?.settings?.set('magic_enabled', e.target.checked);
           }}
-          className="rounded border-app-border bg-app-input-bg text-app-accent focus:ring-app-accent" 
+          className="rounded border-app-border bg-app-input-bg text-app-accent focus:ring-app-accent"
         />
         Включить магические функции (сохраняется в api.settings)
       </label>
-      <input 
+      <input
         type="text"
         value={apiKey}
         onChange={(e) => {
           setApiKey(e.target.value);
           pluginApi?.settings?.set('api_key', e.target.value);
         }}
-        placeholder="API Ключ или параметр..." 
+        placeholder="API Ключ или параметр..."
         className="w-full px-3 py-2 rounded-lg border border-app-border bg-app-input-bg text-app-text-primary focus:outline-app-accent text-sm"
       />
     </div>
@@ -44,11 +44,38 @@ const myPlugin: PluginDefinition = {
   id: "my-test-plugin",
   name: "My Full Test Plugin",
   description: "A comprehensive sample plugin to test all UI hooks in the sandbox.",
-  
+
   // 1. Жизненный цикл плагина
   init: (api) => {
     pluginApi = api;
     console.log("🛠️ Plugin Init: Плагин успешно загружен!");
+
+    // Example: Inline Widget using Plugin API
+    api.events?.on('selectionChanged', (data: any) => {
+      // 1. If there's text selected, show widget
+      if (data.start !== data.end && data.text.trim().length > 0) {
+        api.ui?.renderInlineWidget?.('my-inline-tools', (props: any) => {
+          return (
+            <div className="bg-app-panel text-app-text-primary px-3 py-1.5 rounded-lg shadow-xl shadow-black/20 border border-app-border text-xs flex gap-2 animate-in fade-in zoom-in-95 duration-150">
+                <button 
+                  onClick={() => api.editor?.replaceSelection(props.text.toUpperCase())} 
+                  className="hover:text-app-accent font-semibold transition-colors">
+                    UPPERCASE
+                </button>
+                <div className="w-px h-4 bg-app-border self-center" />
+                <button 
+                  onClick={() => api.editor?.replaceSelection(`**${props.text}**`)} 
+                  className="hover:text-app-accent font-semibold transition-colors">
+                    **Bold**
+                </button>
+            </div>
+          )
+        });
+      } else {
+        // 2. Hide widget when selection is cleared
+        api.ui?.closeInlineWidget?.('my-inline-tools');
+      }
+    });
   },
   unload: () => {
     console.log("🧹 Plugin Unload: Плагин выключен.");

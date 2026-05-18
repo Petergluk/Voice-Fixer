@@ -1,6 +1,5 @@
 # PuuNote Plugin Sandbox
 
-
 This directory contains a standalone sandbox environment designed specifically to help AI coding assistants (like Cursor, Claude, ChatGPT, etc.) write and test plugins for PuuNote.
 
 ## Why this Sandbox exists?
