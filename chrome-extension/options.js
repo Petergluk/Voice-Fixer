@@ -13,6 +13,7 @@ document.addEventListener("DOMContentLoaded", () => {
       geminiApiKey: "",
       geminiModel: "gemini-3-flash-preview",
       autoFallback: true,
+      smartRouting: false,
       audioBitrate: 32000,
       geminiTimeout: 3,
       systemPrompt: defaultPrompt,
@@ -26,6 +27,8 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("apiKey").value = result.geminiApiKey;
       document.getElementById("modelSelect").value = result.geminiModel;
       document.getElementById("autoFallback").checked = result.autoFallback;
+      const smartRoutingEl = document.getElementById("smartRouting");
+      if (smartRoutingEl) smartRoutingEl.checked = result.smartRouting;
       const bitrateSelect = document.getElementById("bitrateSelect");
       if(bitrateSelect) bitrateSelect.value = result.audioBitrate;
       document.getElementById("geminiTimeout").value = result.geminiTimeout;
@@ -53,6 +56,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const apiKey = document.getElementById("apiKey").value.trim();
     const model = document.getElementById("modelSelect").value;
     const autoFallback = document.getElementById("autoFallback").checked;
+    const smartRoutingEl = document.getElementById("smartRouting");
+    const smartRouting = smartRoutingEl ? smartRoutingEl.checked : false;
     const bitrateSelect = document.getElementById("bitrateSelect");
     const bitrate = bitrateSelect ? parseInt(bitrateSelect.value, 10) || 32000 : 32000;
     const timeout =
@@ -67,6 +72,7 @@ document.addEventListener("DOMContentLoaded", () => {
         geminiApiKey: apiKey,
         geminiModel: model,
         autoFallback: autoFallback,
+        smartRouting: smartRouting,
         audioBitrate: bitrate,
         geminiTimeout: timeout,
         systemPrompt: prompt || defaultPrompt,

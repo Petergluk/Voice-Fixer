@@ -161,17 +161,9 @@ function renderOverlay() {
   }
 }
 
-function unmountOverlay() {
-  pluginApi?.ui?.closeOverlay("vf-recording");
-}
+const DEFAULT_SYSTEM_PROMPT = `Ты расшифровщик и корректор текста. Твоя специализация - транскрипт аудиофайлов, вычитка, очистка, оптимизация расшифровок разговорной речи.`;
 
-async function startRecording(nodeId: string) {
-  if (activeRecordingNodeId) return;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    
-    let defaultPrompt = `Ты расшифровщик и корректор текста. Твоя специализация - транскрипт аудиофайлов, вычитка, очистка, оптимизация расшифровок разговорной речи. 
-Задачи:
+const DEFAULT_INSTRUCTION = `Задачи:
 - исправить ошибки распознавания по смыслу.
 - расставить знаки препинания, орфографию.
 - убрать слова-паразиты (как бы, ну, эээ, собственно).
@@ -182,6 +174,15 @@ async function startRecording(nodeId: string) {
 !IMPORTANT! При оптимизации текста сохраняй оригинальный тон и стиль.  Например, при расшифровке аудио-практик, избегай замены  разрешающих формулировок, таких как «можно», «и может быть» - конструкциями в повелительном наклонении. Например, не надо заменять "И можно начать мягко раскачивать дыхание" на повелительное "Начните раскачивать дыхание". Сохраняй предполагаемый уровень взаимодействия говорящего с аудиторией. Не надо смягчать, меняя «бабы»  на «женщины», не надо ужесточать меняя «нахер» на «нахуй», твоя задача очистить мусор, не меняя стиль и тон.
 
 Выведи ТОЛЬКО конечный чистый текст. Никаких префиксов вроде "Вот текст:" не нужно.`;
+
+function unmountOverlay() {
+  pluginApi?.ui?.closeOverlay("vf-recording");
+}
+
+async function startRecording(nodeId: string) {
+  if (activeRecordingNodeId) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     
     let bitrate = parseInt(localStorage.getItem("VOICE_FIXER_BITRATE") || "32000", 10);
     if (isNaN(bitrate)) bitrate = 32000;
@@ -229,23 +230,67 @@ async function startRecording(nodeId: string) {
       pluginApi?.updateJobProgress?.(jobId, 25, "Подготовка к отправке...");
 
       try {
-        const sysPrompt = localStorage.getItem("VOICE_FIXER_PROMPT") || defaultPrompt;
-        const customModels = localStorage.getItem("VOICE_FIXER_MODELS") || undefined;
+        const sysPrompt = localStorage.getItem("VOICE_FIXER_SYSTEM_PROMPT") ?? DEFAULT_SYSTEM_PROMPT;
+        const instruction = localStorage.getItem("VOICE_FIXER_INSTRUCTION") ?? DEFAULT_INSTRUCTION;
+        let targetModels = localStorage.getItem("VOICE_FIXER_MODELS")?.trim();
+        if (!targetModels) {
+          targetModels = localStorage.getItem("GLOBAL_GEMINI_MODELS") || "gemini-2.5-pro,gemini-3-flash-preview,gemini-2.5-flash,gemini-3.1-flash-lite";
+        }
+        let modelsList = targetModels.split(",").map(s => s.trim()).filter(Boolean);
+
+        const isSmart = localStorage.getItem("VOICE_FIXER_SMART_ROUTING") === "true";
+        if (isSmart) {
+          const stats = JSON.parse(localStorage.getItem("VOICE_FIXER_MODEL_STATS") || "{}");
+          modelsList.sort((a, b) => {
+            const scoreA = stats[a] || 999999;
+            const scoreB = stats[b] || 999999;
+            return scoreA - scoreB;
+          });
+        } else {
+          const lastSuccess = localStorage.getItem("VOICE_FIXER_LAST_SUCCESS_MODEL");
+          if (lastSuccess && modelsList.includes(lastSuccess)) {
+            modelsList = [lastSuccess, ...modelsList.filter(m => m !== lastSuccess)];
+          }
+        }
+        
+        const finalModelsToUse = modelsList.join(",");
+
         let tOut = parseInt(localStorage.getItem("VOICE_FIXER_TIMEOUT") || "180", 10);
         if (isNaN(tOut)) tOut = 180;
         
+        const combinedText = `[Системный промпт]:\n${sysPrompt}\n\n[Инструкция]:\n${instruction}`;
+        
         const parts = [
-          { text: sysPrompt },
+          { text: combinedText },
           { inlineData: { mimeType: 'audio/webm', data: base64Audio } }
         ];
 
-        const { text, usedModel } = await generateContentFallback(parts, customModels, {
+        const reqStartTime = Date.now();
+
+        const { text, usedModel } = await generateContentFallback(parts, finalModelsToUse, {
            timeoutMs: tOut * 1000,
            signal: abortController.signal,
            onStatusChange: (msg) => {
              pluginApi?.updateJobProgress?.(jobId, 50, msg);
            }
         });
+        
+        const reqEndTime = Date.now();
+        const durationMs = reqEndTime - reqStartTime;
+        
+        localStorage.setItem("VOICE_FIXER_LAST_SUCCESS_MODEL", usedModel);
+        
+        if (base64Audio.length > 0) {
+          const kb = base64Audio.length / 1024;
+          const msPerKb = durationMs / kb;
+          const stats = JSON.parse(localStorage.getItem("VOICE_FIXER_MODEL_STATS") || "{}");
+          if (stats[usedModel]) {
+            stats[usedModel] = stats[usedModel] * 0.5 + msPerKb * 0.5; // Сглаживаем
+          } else {
+            stats[usedModel] = msPerKb;
+          }
+          localStorage.setItem("VOICE_FIXER_MODEL_STATS", JSON.stringify(stats));
+        }
         
         pluginApi?.updateJobProgress?.(jobId, 100, `Успешно (${usedModel})`);
         pluginApi?.completeJob?.(jobId, `Успешно (${usedModel})`);
@@ -309,16 +354,22 @@ function cancelRecording() {
 
 
 function VoiceFixerSettings() {
-  const [prompt, setPrompt] = useState("");
+  const [sysPrompt, setSysPrompt] = useState("");
+  const [instruction, setInstruction] = useState("");
   const [models, setModels] = useState("");
+  const [smartRouting, setSmartRouting] = useState(false);
   const [timeoutSec, setTimeoutSec] = useState("");
   const [bitrate, setBitrate] = useState("32000");
   const [saveTarget, setSaveTarget] = useState("current");
   const [structureMode, setStructureMode] = useState("single");
 
   useEffect(() => {
-    setPrompt(localStorage.getItem("VOICE_FIXER_PROMPT") || "");
+    // If empty or never set, show the defaults so the user sees them.
+    // If the user actually cleared it, it might restore the default, which is usually safer anyway.
+    setSysPrompt(localStorage.getItem("VOICE_FIXER_SYSTEM_PROMPT") ?? DEFAULT_SYSTEM_PROMPT);
+    setInstruction(localStorage.getItem("VOICE_FIXER_INSTRUCTION") ?? DEFAULT_INSTRUCTION);
     setModels(localStorage.getItem("VOICE_FIXER_MODELS") || "");
+    setSmartRouting(localStorage.getItem("VOICE_FIXER_SMART_ROUTING") === "true");
     setTimeoutSec(localStorage.getItem("VOICE_FIXER_TIMEOUT") || "180");
     setBitrate(localStorage.getItem("VOICE_FIXER_BITRATE") || "32000");
     setSaveTarget(localStorage.getItem("VOICE_FIXER_SAVE_TARGET") || "current");
@@ -326,8 +377,10 @@ function VoiceFixerSettings() {
   }, []);
 
   const handleSave = () => {
-    localStorage.setItem("VOICE_FIXER_PROMPT", prompt);
+    localStorage.setItem("VOICE_FIXER_SYSTEM_PROMPT", sysPrompt);
+    localStorage.setItem("VOICE_FIXER_INSTRUCTION", instruction);
     localStorage.setItem("VOICE_FIXER_MODELS", models);
+    localStorage.setItem("VOICE_FIXER_SMART_ROUTING", smartRouting.toString());
     localStorage.setItem("VOICE_FIXER_TIMEOUT", timeoutSec);
     localStorage.setItem("VOICE_FIXER_BITRATE", bitrate);
     localStorage.setItem("VOICE_FIXER_SAVE_TARGET", saveTarget);
@@ -354,6 +407,21 @@ function VoiceFixerSettings() {
           Если пусто, используется глобальный список моделей.
         </span>
       </label>
+
+      <div className="flex flex-col gap-1">
+        <label className="flex items-center gap-2 text-sm text-app-text-primary">
+          <input 
+            type="checkbox"
+            checked={smartRouting}
+            onChange={(e) => setSmartRouting(e.target.checked)}
+            className="rounded border border-app-border text-app-accent focus:ring-1 focus:ring-inset focus:ring-app-accent focus:outline-none"
+          />
+          <span>Умный выбор модели (Auto-Routing)</span>
+        </label>
+        <span className="text-xs text-app-text-secondary opacity-70">
+          Если включено, плагин будет замерять скорость ответа (мс на килобайт) и собирать статистику для динамического выбора самой быстрой доступной модели. Если выключено — просто запомнит и будет использовать последнюю работоспособную.
+        </span>
+      </div>
 
       <label className="flex flex-col gap-1 text-sm text-app-text-primary">
         <span>Тайм-аут запроса (сек)</span>
@@ -412,16 +480,23 @@ function VoiceFixerSettings() {
       </div>
 
       <label className="flex flex-col gap-1 text-sm text-app-text-primary">
-        <span>Системный промпт</span>
+        <span>Системный промпт (роль и контекст)</span>
         <textarea 
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Системный промпт транскрибации..." 
-          className="w-full px-3 py-2 rounded-lg border border-app-border bg-app-input-bg text-app-text-primary h-32 resize-y focus:ring-1 focus:ring-inset focus:ring-app-accent focus:outline-none text-sm"
+          value={sysPrompt}
+          onChange={(e) => setSysPrompt(e.target.value)}
+          placeholder="Системный промпт..." 
+          className="w-full px-3 py-2 rounded-lg border border-app-border bg-app-input-bg text-app-text-primary h-16 resize-y focus:ring-1 focus:ring-inset focus:ring-app-accent focus:outline-none text-sm"
         />
-        <span className="text-xs text-app-text-secondary opacity-70">
-          Оставьте пустым для использования встроенного системного промпта по умолчанию.
-        </span>
+      </label>
+
+      <label className="flex flex-col gap-1 text-sm text-app-text-primary">
+        <span>Инструкции / Правила расшифровки</span>
+        <textarea 
+          value={instruction}
+          onChange={(e) => setInstruction(e.target.value)}
+          placeholder="Подробные инструкции..." 
+          className="w-full px-3 py-2 rounded-lg border border-app-border bg-app-input-bg text-app-text-primary h-64 resize-y focus:ring-1 focus:ring-inset focus:ring-app-accent focus:outline-none text-sm text-[13px] leading-relaxed"
+        />
       </label>
 
       <button

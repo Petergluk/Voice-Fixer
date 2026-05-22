@@ -249,10 +249,14 @@ async function sendWithFallback(
   timeoutMs,
   forceFallback,
 ) {
-  const state = await chrome.storage.local.get({
+  const ObjectState = await chrome.storage.local.get({
     invalidKeys: [],
     autoFallback: true,
+    smartRouting: false,
+    modelStats: {},
+    lastSuccessModel: null
   });
+  const state = ObjectState;
   const invalidKeys = new Set(state.invalidKeys || []);
   const autoFallback = forceFallback ? true : state.autoFallback;
 
@@ -276,10 +280,21 @@ async function sendWithFallback(
     "gemini-2.5-flash",
     "gemini-3.1-flash-lite",
   ];
-  // Формируем очередь, ставя первую выбранную, затем остальные
-  const queue = autoFallback
-    ? [initialModel, ...fallbackModels.filter((m) => m !== initialModel)]
-    : [initialModel];
+  
+  let baseModels = Array.from(new Set([initialModel, ...fallbackModels]));
+
+  if (state.smartRouting) {
+    baseModels.sort((a, b) => {
+      const scoreA = state.modelStats[a] || 999999;
+      const scoreB = state.modelStats[b] || 999999;
+      return scoreA - scoreB;
+    });
+  } else if (state.lastSuccessModel && baseModels.includes(state.lastSuccessModel)) {
+    baseModels = [state.lastSuccessModel, ...baseModels.filter(m => m !== state.lastSuccessModel)];
+  }
+
+  // Формируем очередь, ставя первую выбранную (умную или последнюю), затем остальные
+  const queue = autoFallback ? baseModels : [baseModels[0]];
   const iterKeys = autoFallback ? keys : [keys[0]];
 
   let lastError;
@@ -353,6 +368,7 @@ async function sendWithFallback(
           ],
         });
 
+        const reqStartTime = Date.now();
         const actualTimeoutMs = Math.min(timeoutMs, 270000); // Max 4.5 mins per request
         const text = await sendToGemini(
           base64Audio,
@@ -362,6 +378,23 @@ async function sendWithFallback(
           actualTimeoutMs,
           tabId,
         );
+        const reqEndTime = Date.now();
+        const durationReqMs = reqEndTime - reqStartTime;
+
+        await chrome.storage.local.set({ lastSuccessModel: currentModel });
+
+        if (base64Audio.length > 0) {
+          const kb = base64Audio.length / 1024;
+          const msPerKb = durationReqMs / kb;
+          const stats = state.modelStats || {};
+          if (stats[currentModel]) {
+            stats[currentModel] = stats[currentModel] * 0.5 + msPerKb * 0.5; // Сглаживаем
+          } else {
+            stats[currentModel] = msPerKb;
+          }
+          await chrome.storage.local.set({ modelStats: stats });
+        }
+
         // Сохраняем на всякий случай в память, чтобы не потерялось
         chrome.storage.local.set({ lastTranscription: text });
         return text;
