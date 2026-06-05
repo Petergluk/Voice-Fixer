@@ -164,14 +164,12 @@ async function processAudioInBackground(
       throw new Error("API ключ не задан. Зайдите в настройки расширения.");
     }
 
-    // Вызываем модель (вместе с резервными)
     const timeoutMs = (result.geminiTimeout || 3) * 60000;
-    const combinedSystemPrompt = `[Системный промпт]:\n${result.systemPrompt}\n\n[Инструкция]:\n${result.instruction || ""}`;
     const text = await sendWithFallback(
       base64Audio,
       result.geminiApiKey,
       result.geminiModel,
-      combinedSystemPrompt,
+      result.systemPrompt,
       tabId,
       duration,
       timeoutMs,
@@ -308,11 +306,11 @@ async function sendWithFallback(
   let lastError;
   let isFirstIteration = true;
 
-  for (let k = 0; k < iterKeys.length; k++) {
-    const key = iterKeys[k];
-    logDebug(`sendWithFallback: Итерируем ключ ${k + 1} из ${iterKeys.length}`);
-    for (let i = 0; i < queue.length; i++) {
-      const currentModel = queue[i];
+  for (let i = 0; i < queue.length; i++) {
+    const currentModel = queue[i];
+    
+    for (let k = 0; k < iterKeys.length; k++) {
+      const key = iterKeys[k];
       try {
         logDebug(
           `sendWithFallback: Отправка через ${currentModel} (ключ ...${key.slice(-4)} №${k + 1})`,
@@ -323,7 +321,7 @@ async function sendWithFallback(
 
         if (!isFirstIteration) {
           logDebug(
-            `sendWithFallback: Ожидание перед следующей моделью (3с)...`,
+            `sendWithFallback: Ожидание перед следующей попыткой (3с)...`,
           );
           let toastMsg = `Смена: ${currentModel} (Ключ ${k + 1}/${iterKeys.length})`;
           if (lastError && lastError.message) {
@@ -369,7 +367,7 @@ async function sendWithFallback(
           target: { tabId: tabId },
           func: showToast,
           args: [
-            `🎙️ Обрабатываем... ${currentModel} (Ключ ${k + 1}/${keys.length})`,
+            `🎙️ Обрабатываем... ${currentModel} (Ключ ${k + 1}/${iterKeys.length})`,
             false,
             true,
             true,
@@ -408,7 +406,7 @@ async function sendWithFallback(
       } catch (err) {
         console.warn(`Ошибка при использовании ${currentModel}:`, err);
         logDebug(
-          `sendWithFallback: Ошибка (${currentModel}): ${err.message || "Unknown err"}`,
+          `sendWithFallback: Ошибка (${currentModel}, ключ ${k + 1}): ${err.message || "Unknown err"}`,
         );
         lastError = err;
 
@@ -424,17 +422,16 @@ async function sendWithFallback(
           if (action === "CANCEL") throw new Error("Отменено пользователем");
           if (action === "SKIP_MODEL") {
             if (activeTasks[tabId]) activeTasks[tabId].action = null;
-            continue; // переходим к след. модели
+            break; // прерываем цикл по ключам, идем к след. модели
           }
           if (action === "SKIP_KEY") {
             if (activeTasks[tabId]) activeTasks[tabId].action = null;
-            break; // переходим к след. ключу
+            continue; // переходим к след. ключу
           }
           // Если это AbortError от таймаута сети и action = null
-          continue;
+          break; // сетевой таймаут - вероятно проблема с моделью/сетью. Идем к след. модели.
         }
 
-        // Если проблема с ключом, лимитами или таймаутом сети - пробуем следующий ключ
         const errMsg = err.message.toLowerCase();
 
         // 400 Bad Request обычно используется для невалидных ключей
@@ -464,21 +461,29 @@ async function sendWithFallback(
             console.warn(e);
           }
 
-          break; // skip to next key
+          continue; // пробуем следующий ключ
         }
 
         if (
-          errMsg.includes("key") ||
-          errMsg.includes("quota") ||
-          errMsg.includes("429") ||
-          errMsg.includes("timeout") ||
-          errMsg.includes("тайм-аут") ||
           errMsg.includes("504") ||
           errMsg.includes("503") ||
+          errMsg.includes("timeout") ||
+          errMsg.includes("тайм-аут") ||
           errMsg.includes("пользователем")
         ) {
-          break; // переходим к следующему ключу
+          break; // Проблема на бэке Google или прервано - другой ключ не поможет, нужна другая модель
         }
+        
+        if (
+          errMsg.includes("key") ||
+          errMsg.includes("quota") ||
+          errMsg.includes("429")
+        ) {
+          continue; // Проблема с лимитом ключа, пробуем следующий ключ
+        }
+
+        // Для остальных непонятных ошибок - переходим к следующей модели на всякий случай
+        break;
       }
     }
   }

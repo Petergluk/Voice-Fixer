@@ -1,5 +1,6 @@
-const defaultSystemPrompt = `Ты расшифровщик и корректор текста. Твоя специализация - транскрипт аудиофайлов, вычитка, очистка, оптимизация расшифровок разговорной речи.`;
-const defaultInstruction = `Задачи:
+const defaultSystemPrompt = `Ты расшифровщик и корректор текста. Твоя специализация - транскрипт аудиофайлов, вычитка, очистка, оптимизация расшифровок разговорной речи.
+
+Задачи:
 - исправить ошибки распознавания по смыслу.
 - расставить знаки препинания, орфографию.
 - убрать слова-паразиты (как бы, ну, эээ, собственно).
@@ -11,8 +12,9 @@ const defaultInstruction = `Задачи:
 
 Выведи ТОЛЬКО конечный чистый текст. Никаких префиксов вроде "Вот текст:" не нужно.`;
 
-const defaultConciseSystemPrompt = `Ты ИИ-редактор. Твоя задача — сделать из сумбурной устной речи четкий, лаконичный и структурированный текст.`;
-const defaultConciseInstruction = `Задачи:
+const defaultConciseSystemPrompt = `Ты ИИ-редактор. Твоя задача — сделать из сумбурной устной речи четкий, лаконичный и структурированный текст.
+
+Задачи:
 - Очистить текст от воды, бессмысленных повторов и слов-паразитов.
 - Извлечь главную мысль и ключевые факты.
 - Переписать текст структурно, максимально лаконично, по существу.
@@ -22,8 +24,8 @@ const defaultConciseInstruction = `Задачи:
 Выведи ТОЛЬКО готовый текст без предисловий.`;
 
 let currentModePrompts = {
-  default: { sys: defaultSystemPrompt, instr: defaultInstruction },
-  concise: { sys: defaultConciseSystemPrompt, instr: defaultConciseInstruction }
+  default: { sys: defaultSystemPrompt },
+  concise: { sys: defaultConciseSystemPrompt }
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -60,10 +62,19 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("geminiTimeout").value = result.geminiTimeout;
       
       // Миграция из легаси полей, если пользователь уже редактировал их
-      currentModePrompts.default.sys = result.sysPrompt_default || result.systemPrompt || defaultSystemPrompt;
-      currentModePrompts.default.instr = result.instr_default || result.instruction || defaultInstruction;
-      currentModePrompts.concise.sys = result.sysPrompt_concise;
-      currentModePrompts.concise.instr = result.instr_concise;
+      let migrationDefaultSys = result.sysPrompt_default || result.systemPrompt || defaultSystemPrompt;
+      let migrationDefaultInstr = result.instr_default || result.instruction;
+      if (migrationDefaultInstr && !migrationDefaultSys.includes(migrationDefaultInstr.slice(0, 50))) {
+        migrationDefaultSys += "\n\n" + migrationDefaultInstr;
+      }
+      currentModePrompts.default.sys = migrationDefaultSys;
+      
+      let migrationConciseSys = result.sysPrompt_concise || defaultConciseSystemPrompt;
+      let migrationConciseInstr = result.instr_concise;
+      if (migrationConciseInstr && !migrationConciseSys.includes(migrationConciseInstr.slice(0, 50))) {
+        migrationConciseSys += "\n\n" + migrationConciseInstr;
+      }
+      currentModePrompts.concise.sys = migrationConciseSys;
 
       const promptModeSelect = document.getElementById("promptModeSelect");
       if (promptModeSelect) promptModeSelect.value = result.promptMode;
@@ -71,7 +82,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const updateTextareas = () => {
         const mode = promptModeSelect ? promptModeSelect.value : "default";
         document.getElementById("promptText").value = currentModePrompts[mode].sys;
-        document.getElementById("instructionText").value = currentModePrompts[mode].instr;
       };
 
       updateTextareas();
@@ -86,10 +96,6 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("promptText").addEventListener("input", (e) => {
         const mode = promptModeSelect ? promptModeSelect.value : "default";
         currentModePrompts[mode].sys = e.target.value;
-      });
-      document.getElementById("instructionText").addEventListener("input", (e) => {
-        const mode = promptModeSelect ? promptModeSelect.value : "default";
-        currentModePrompts[mode].instr = e.target.value;
       });
 
       document.getElementById("enableNotifications").checked =
@@ -138,12 +144,9 @@ document.addEventListener("DOMContentLoaded", () => {
         geminiTimeout: timeout,
         promptMode: mode,
         sysPrompt_default: currentModePrompts.default.sys,
-        instr_default: currentModePrompts.default.instr,
         sysPrompt_concise: currentModePrompts.concise.sys,
-        instr_concise: currentModePrompts.concise.instr,
-        // Для backwards compatibility, также сохраним текущий как systemPrompt и instruction
+        // Для backwards compatibility, также сохраним текущий как systemPrompt
         systemPrompt: currentModePrompts[mode].sys,
-        instruction: currentModePrompts[mode].instr,
         enableNotifications: notify,
         saveAudio: saveAudio,
         debugEnabled: debug,
