@@ -39,12 +39,12 @@ document.addEventListener("DOMContentLoaded", () => {
       audioBitrate: 32000,
       geminiTimeout: 3,
       systemPrompt: defaultSystemPrompt, // Легаси, для миграции
-      instruction: defaultInstruction, // Легаси, для миграции
+      instruction: "", // Легаси, для миграции
       promptMode: "default",
       sysPrompt_default: "",
       instr_default: "",
       sysPrompt_concise: defaultConciseSystemPrompt,
-      instr_concise: defaultConciseInstruction,
+      instr_concise: "",
       enableNotifications: true,
       saveAudio: false,
       debugEnabled: false,

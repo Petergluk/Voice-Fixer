@@ -165,11 +165,17 @@ async function processAudioInBackground(
     }
 
     const timeoutMs = (result.geminiTimeout || 3) * 60000;
+    
+    let finalPrompt = result.systemPrompt;
+    if (result.instruction && !finalPrompt.includes(result.instruction.substring(0, 50))) {
+      finalPrompt += "\n\n" + result.instruction;
+    }
+    
     const text = await sendWithFallback(
       base64Audio,
       result.geminiApiKey,
       result.geminiModel,
-      result.systemPrompt,
+      finalPrompt,
       tabId,
       duration,
       timeoutMs,
