@@ -1,10 +1,30 @@
-const defaultPrompt = `Ты транскрибатор. Твоя задача — дословно перевести аудио в текст. 
-ПРАВИЛА:
-1. Расставь знаки препинания и заглавные буквы.
-2. Исправь слова, если они явно неправильно распознаны.
-3. Удали только звуки хезитации (э-э, а-а, м-м) и слова-паразиты (ну, как бы, типа, собственно), если они не несут смысла.
-4. СТРОГО ЗАПРЕЩЕНО: перефразировать, изменять порядок слов, сокращать или менять структуру предложений. Сохраняй оригинальную речь, тон и стиль автора.
-Выведи ТОЛЬКО готовый текст без предисловий и форматирования.`;
+const defaultSystemPrompt = `Ты расшифровщик и корректор текста. Твоя специализация - транскрипт аудиофайлов, вычитка, очистка, оптимизация расшифровок разговорной речи.`;
+const defaultInstruction = `Задачи:
+- исправить ошибки распознавания по смыслу.
+- расставить знаки препинания, орфографию.
+- убрать слова-паразиты (как бы, ну, эээ, собственно).
+- разбить длинные предложения и абзацы для читабельности.
+
+!IMPORTANT! Ты сохраняешь полное содержание и структуру исходного текста. Ты никогда не редактируешь и не корректируешь смыслы, лишь слегка оптимизируешь их изложение.
+
+!IMPORTANT! При оптимизации текста сохраняй оригинальный тон и стиль. Например, при расшифровке аудио-практик, избегай замены разрешающих формулировок, таких как «можно», «и может быть» - конструкциями в повелительном наклонении.
+
+Выведи ТОЛЬКО конечный чистый текст. Никаких префиксов вроде "Вот текст:" не нужно.`;
+
+const defaultConciseSystemPrompt = `Ты ИИ-редактор. Твоя задача — сделать из сумбурной устной речи четкий, лаконичный и структурированный текст.`;
+const defaultConciseInstruction = `Задачи:
+- Очистить текст от воды, бессмысленных повторов и слов-паразитов.
+- Извлечь главную мысль и ключевые факты.
+- Переписать текст структурно, максимально лаконично, по существу.
+- Разбить на логичные короткие абзацы или пункты.
+- Сохранить общую суть, но сократить объем без потери важных деталей.
+
+Выведи ТОЛЬКО готовый текст без предисловий.`;
+
+let currentModePrompts = {
+  default: { sys: defaultSystemPrompt, instr: defaultInstruction },
+  concise: { sys: defaultConciseSystemPrompt, instr: defaultConciseInstruction }
+};
 
 document.addEventListener("DOMContentLoaded", () => {
   // Загружаем сохраненные настройки
@@ -16,7 +36,13 @@ document.addEventListener("DOMContentLoaded", () => {
       smartRouting: false,
       audioBitrate: 32000,
       geminiTimeout: 3,
-      systemPrompt: defaultPrompt,
+      systemPrompt: defaultSystemPrompt, // Легаси, для миграции
+      instruction: defaultInstruction, // Легаси, для миграции
+      promptMode: "default",
+      sysPrompt_default: "",
+      instr_default: "",
+      sysPrompt_concise: defaultConciseSystemPrompt,
+      instr_concise: defaultConciseInstruction,
       enableNotifications: true,
       saveAudio: false,
       debugEnabled: false,
@@ -32,7 +58,40 @@ document.addEventListener("DOMContentLoaded", () => {
       const bitrateSelect = document.getElementById("bitrateSelect");
       if(bitrateSelect) bitrateSelect.value = result.audioBitrate;
       document.getElementById("geminiTimeout").value = result.geminiTimeout;
-      document.getElementById("promptText").value = result.systemPrompt;
+      
+      // Миграция из легаси полей, если пользователь уже редактировал их
+      currentModePrompts.default.sys = result.sysPrompt_default || result.systemPrompt || defaultSystemPrompt;
+      currentModePrompts.default.instr = result.instr_default || result.instruction || defaultInstruction;
+      currentModePrompts.concise.sys = result.sysPrompt_concise;
+      currentModePrompts.concise.instr = result.instr_concise;
+
+      const promptModeSelect = document.getElementById("promptModeSelect");
+      if (promptModeSelect) promptModeSelect.value = result.promptMode;
+
+      const updateTextareas = () => {
+        const mode = promptModeSelect ? promptModeSelect.value : "default";
+        document.getElementById("promptText").value = currentModePrompts[mode].sys;
+        document.getElementById("instructionText").value = currentModePrompts[mode].instr;
+      };
+
+      updateTextareas();
+
+      if (promptModeSelect) {
+        promptModeSelect.addEventListener("change", () => {
+          updateTextareas();
+        });
+      }
+
+      // Сохраняем текст в объект при вводе
+      document.getElementById("promptText").addEventListener("input", (e) => {
+        const mode = promptModeSelect ? promptModeSelect.value : "default";
+        currentModePrompts[mode].sys = e.target.value;
+      });
+      document.getElementById("instructionText").addEventListener("input", (e) => {
+        const mode = promptModeSelect ? promptModeSelect.value : "default";
+        currentModePrompts[mode].instr = e.target.value;
+      });
+
       document.getElementById("enableNotifications").checked =
         result.enableNotifications;
       document.getElementById("saveAudio").checked = result.saveAudio;
@@ -62,7 +121,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const bitrate = bitrateSelect ? parseInt(bitrateSelect.value, 10) || 32000 : 32000;
     const timeout =
       parseInt(document.getElementById("geminiTimeout").value, 10) || 3;
-    const prompt = document.getElementById("promptText").value.trim();
+    const promptModeSelect = document.getElementById("promptModeSelect");
+    const mode = promptModeSelect ? promptModeSelect.value : "default";
+
     const notify = document.getElementById("enableNotifications").checked;
     const saveAudio = document.getElementById("saveAudio").checked;
     const debug = document.getElementById("debugEnabled").checked;
@@ -75,7 +136,14 @@ document.addEventListener("DOMContentLoaded", () => {
         smartRouting: smartRouting,
         audioBitrate: bitrate,
         geminiTimeout: timeout,
-        systemPrompt: prompt || defaultPrompt,
+        promptMode: mode,
+        sysPrompt_default: currentModePrompts.default.sys,
+        instr_default: currentModePrompts.default.instr,
+        sysPrompt_concise: currentModePrompts.concise.sys,
+        instr_concise: currentModePrompts.concise.instr,
+        // Для backwards compatibility, также сохраним текущий как systemPrompt и instruction
+        systemPrompt: currentModePrompts[mode].sys,
+        instruction: currentModePrompts[mode].instr,
         enableNotifications: notify,
         saveAudio: saveAudio,
         debugEnabled: debug,

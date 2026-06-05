@@ -41,6 +41,46 @@ recordBtn.addEventListener("click", async () => {
 
 // Автозапуск записи при открытии окна расширения
 document.addEventListener("DOMContentLoaded", () => {
+  const settingsLink = document.getElementById("settingsLink");
+  if (settingsLink) {
+    settingsLink.addEventListener("click", () => {
+      if (chrome.runtime.openOptionsPage) {
+        chrome.runtime.openOptionsPage();
+      } else {
+        window.open(chrome.runtime.getURL("options.html"));
+      }
+    });
+  }
+
+  const quickMode = document.getElementById("quickPromptMode");
+  if (quickMode) {
+    chrome.storage.local.get([
+      "promptMode", 
+      "sysPrompt_default", "instr_default", 
+      "sysPrompt_concise", "instr_concise"
+    ], (res) => {
+      quickMode.value = res.promptMode || "default";
+      
+      quickMode.addEventListener("change", () => {
+        const mode = quickMode.value;
+        const d_sys = `Ты расшифровщик и корректор текста. Твоя специализация - транскрипт аудиофайлов, вычитка, очистка, оптимизация расшифровок разговорной речи.`;
+        const d_ins = `Задачи:\n- исправить ошибки распознавания по смыслу.\n- расставить знаки препинания, орфографию.\n- убрать слова-паразиты (как бы, ну, эээ, собственно).\n- разбить длинные предложения и абзацы для читабельности.\n\n!IMPORTANT! Ты сохраняешь полное содержание и структуру исходного текста. Ты никогда не редактируешь и не корректируешь смыслы, лишь слегка оптимизируешь их изложение.\n\n!IMPORTANT! При оптимизации текста сохраняй оригинальный тон и стиль. Например, при расшифровке аудио-практик, избегай замены разрешающих формулировок, таких как «можно», «и может быть» - конструкциями в повелительном наклонении.\n\nВыведи ТОЛЬКО конечный чистый текст. Никаких префиксов вроде "Вот текст:" не нужно.`;
+        
+        const c_sys = `Ты ИИ-редактор. Твоя задача — сделать из сумбурной устной речи четкий, лаконичный и структурированный текст.`;
+        const c_ins = `Задачи:\n- Очистить текст от воды, бессмысленных повторов и слов-паразитов.\n- Извлечь главную мысль и ключевые факты.\n- Переписать текст структурно, максимально лаконично, по существу.\n- Разбить на логичные короткие абзацы или пункты.\n- Сохранить общую суть, но сократить объем без потери важных деталей.\n\nВыведи ТОЛЬКО готовый текст без предисловий.`;
+
+        let newSys = mode === "default" ? (res.sysPrompt_default || d_sys) : (res.sysPrompt_concise || c_sys);
+        let newInstr = mode === "default" ? (res.instr_default || d_ins) : (res.instr_concise || c_ins);
+
+        chrome.storage.local.set({
+          promptMode: mode,
+          systemPrompt: newSys,
+          instruction: newInstr
+        });
+      });
+    });
+  }
+
   startRecording();
 });
 

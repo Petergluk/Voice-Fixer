@@ -117,13 +117,18 @@ async function processAudioInBackground(
       geminiTimeout: 3,
       enableNotifications: true,
       saveAudio: false,
-      systemPrompt: `Ты транскрибатор. Твоя задача — дословно перевести аудио в текст. 
-ПРАВИЛА:
-1. Расставь знаки препинания и заглавные буквы.
-2. Исправь слова, если они явно неправильно распознаны.
-3. Удали только звуки хезитации (э-э, а-а, м-м) и слова-паразиты (ну, как бы, типа, собственно), если они не несут смысла.
-4. СТРОГО ЗАПРЕЩЕНО: перефразировать, изменять порядок слов, сокращать или менять структуру предложений. Сохраняй оригинальную речь, тон и стиль автора.
-Выведи ТОЛЬКО готовый текст без предисловий и форматирования.`,
+      systemPrompt: `Ты расшифровщик и корректор текста. Твоя специализация - транскрипт аудиофайлов, вычитка, очистка, оптимизация расшифровок разговорной речи.`,
+      instruction: `Задачи:
+- исправить ошибки распознавания по смыслу.
+- расставить знаки препинания, орфографию.
+- убрать слова-паразиты (как бы, ну, эээ, собственно).
+- разбить длинные предложения и абзацы для читабельности.
+
+!IMPORTANT! Ты сохраняешь полное содержание и структуру исходного текста. Ты никогда не редактируешь и не корректируешь смыслы, лишь слегка оптимизируешь их изложение.
+
+!IMPORTANT! При оптимизации текста сохраняй оригинальный тон и стиль. Например, при расшифровке аудио-практик, избегай замены разрешающих формулировок, таких как «можно», «и может быть» - конструкциями в повелительном наклонении.
+
+Выведи ТОЛЬКО конечный чистый текст. Никаких префиксов вроде "Вот текст:" не нужно.`,
     });
 
     if (result.saveAudio) {
@@ -161,11 +166,12 @@ async function processAudioInBackground(
 
     // Вызываем модель (вместе с резервными)
     const timeoutMs = (result.geminiTimeout || 3) * 60000;
+    const combinedSystemPrompt = `[Системный промпт]:\n${result.systemPrompt}\n\n[Инструкция]:\n${result.instruction || ""}`;
     const text = await sendWithFallback(
       base64Audio,
       result.geminiApiKey,
       result.geminiModel,
-      result.systemPrompt,
+      combinedSystemPrompt,
       tabId,
       duration,
       timeoutMs,
@@ -293,11 +299,9 @@ async function sendWithFallback(
       const scoreB = state.modelStats[b] || 999999;
       return scoreA - scoreB;
     });
-  } else if (state.lastSuccessModel && baseModels.includes(state.lastSuccessModel)) {
-    baseModels = [state.lastSuccessModel, ...baseModels.filter(m => m !== state.lastSuccessModel)];
   }
 
-  // Формируем очередь, ставя первую выбранную (умную или последнюю), затем остальные
+  // Формируем очередь, ставя первую выбранную (умную или выбранную руками), затем остальные
   const queue = autoFallback ? baseModels : [baseModels[0]];
   const iterKeys = autoFallback ? keys : [keys[0]];
 
@@ -407,6 +411,13 @@ async function sendWithFallback(
           `sendWithFallback: Ошибка (${currentModel}): ${err.message || "Unknown err"}`,
         );
         lastError = err;
+
+        // Пессимизируем статистику (штраф за сбой), чтобы дать шанс другим
+        if (state.smartRouting) {
+          const stats = state.modelStats || {};
+          stats[currentModel] = (stats[currentModel] || 999999) * 1.5 + 5000;
+          await chrome.storage.local.set({ modelStats: stats });
+        }
 
         if (err.name === "AbortError") {
           const action = activeTasks[tabId]?.action;

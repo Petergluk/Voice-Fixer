@@ -246,11 +246,6 @@ async function startRecording(nodeId: string) {
             const scoreB = stats[b] || 999999;
             return scoreA - scoreB;
           });
-        } else {
-          const lastSuccess = localStorage.getItem("VOICE_FIXER_LAST_SUCCESS_MODEL");
-          if (lastSuccess && modelsList.includes(lastSuccess)) {
-            modelsList = [lastSuccess, ...modelsList.filter(m => m !== lastSuccess)];
-          }
         }
         
         const finalModelsToUse = modelsList.join(",");
