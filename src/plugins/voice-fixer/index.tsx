@@ -234,7 +234,7 @@ async function startRecording(nodeId: string) {
         const instruction = localStorage.getItem("VOICE_FIXER_INSTRUCTION") ?? DEFAULT_INSTRUCTION;
         let targetModels = localStorage.getItem("VOICE_FIXER_MODELS")?.trim();
         if (!targetModels) {
-          targetModels = localStorage.getItem("GLOBAL_GEMINI_MODELS") || "gemini-2.5-pro,gemini-3-flash-preview,gemini-2.5-flash,gemini-3.1-flash-lite";
+          targetModels = localStorage.getItem("GLOBAL_GEMINI_MODELS") || "gemini-2.5-pro,gemini-3.5-flash,gemini-3-flash-preview,gemini-2.5-flash,gemini-3.1-flash-lite";
         }
         let modelsList = targetModels.split(",").map(s => s.trim()).filter(Boolean);
 

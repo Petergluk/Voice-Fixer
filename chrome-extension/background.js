@@ -94,6 +94,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         })
         .catch((e) => console.error(e));
     }
+  } else if (request.action === "HEARTBEAT") {
+    // Keeps SW alive
+    sendResponse({ status: "alive" });
   }
 });
 
@@ -109,7 +112,7 @@ async function processAudioInBackground(
     );
     const result = await chrome.storage.local.get({
       geminiApiKey: "",
-      geminiModel: "gemini-3-flash-preview",
+      geminiModel: "gemini-3.5-flash",
       autoFallback: true,
       geminiTimeout: 3,
       enableNotifications: true,
@@ -276,6 +279,7 @@ async function sendWithFallback(
     throw new Error("API ключ не задан. Зайдите в настройки.");
 
   const fallbackModels = [
+    "gemini-3.5-flash",
     "gemini-3-flash-preview",
     "gemini-2.5-flash",
     "gemini-3.1-flash-lite",
@@ -369,13 +373,12 @@ async function sendWithFallback(
         });
 
         const reqStartTime = Date.now();
-        const actualTimeoutMs = Math.min(timeoutMs, 270000); // Max 4.5 mins per request
         const text = await sendToGemini(
           base64Audio,
           key,
           currentModel,
           prompt,
-          actualTimeoutMs,
+          timeoutMs,
           tabId,
         );
         const reqEndTime = Date.now();
@@ -651,6 +654,15 @@ function showToast(message, isError, isSticky = false, isProcessing = false) {
       const m = Math.floor(s / 60);
       const sec = s % 60;
       el.textContent = `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+      
+      // Ping background to keep Service Worker alive during long requests
+      if (s % 15 === 0) {
+        try {
+          if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
+            chrome.runtime.sendMessage({ action: "HEARTBEAT" }).catch(() => {});
+          }
+        } catch (e) {}
+      }
     }, 1000);
 
     setTimeout(() => {

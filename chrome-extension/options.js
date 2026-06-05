@@ -11,7 +11,7 @@ document.addEventListener("DOMContentLoaded", () => {
   chrome.storage.local.get(
     {
       geminiApiKey: "",
-      geminiModel: "gemini-3-flash-preview",
+      geminiModel: "gemini-3.5-flash",
       autoFallback: true,
       smartRouting: false,
       audioBitrate: 32000,

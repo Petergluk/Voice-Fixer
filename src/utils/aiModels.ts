@@ -1,4 +1,4 @@
-export const DEFAULT_MODELS = "gemini-2.5-pro,gemini-3-flash-preview,gemini-2.5-flash,gemini-3.1-flash-lite";
+export const DEFAULT_MODELS = "gemini-2.5-pro,gemini-3.5-flash,gemini-3-flash-preview,gemini-2.5-flash,gemini-3.1-flash-lite";
 
 export async function generateContentFallback(promptText: unknown, customModelOverride?: string, options?: any): Promise<{ text: string, usedModel: string }> {
   const modelsAttr = localStorage.getItem('GLOBAL_GEMINI_MODELS') || DEFAULT_MODELS;
