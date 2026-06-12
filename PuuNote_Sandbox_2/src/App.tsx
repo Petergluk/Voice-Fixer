@@ -223,9 +223,9 @@ function App() {
                 <input 
                   type="text" 
                   className="w-full bg-app-input-bg border border-app-border rounded px-3 py-2 text-sm text-app-text-primary focus:ring-1 focus:ring-inset focus:ring-app-accent outline-none transition-shadow"
-                  defaultValue={localStorage.getItem('GLOBAL_GEMINI_MODELS') || "gemini-3.5-flash, gemini-3-flash-preview, gemini-2.5-flash, gemini-3.1-flash-lite"}
+                  defaultValue={localStorage.getItem('GLOBAL_GEMINI_MODELS') || "gemini-2.5-pro, gemini-3-flash-preview, gemini-2.5-flash, gemini-3.1-flash-lite"}
                   onChange={(e) => localStorage.setItem('GLOBAL_GEMINI_MODELS', e.target.value)}
-                  placeholder="gemini-3.5-flash, gemini-2.5-flash"
+                  placeholder="gemini-2.5-pro, gemini-2.5-flash"
                 />
                 <p className="text-xs text-app-text-muted mt-1">
                   Список моделей через запятую. Эмулирует <code>GLOBAL_GEMINI_MODELS</code> из основного приложения для утилит вроде <code>generateContentFallback</code>.

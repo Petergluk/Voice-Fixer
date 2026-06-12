@@ -98,12 +98,17 @@ document.addEventListener("DOMContentLoaded", () => {
         currentModePrompts[mode].sys = e.target.value;
       });
 
-      document.getElementById("enableNotifications").checked =
-        result.enableNotifications;
-      document.getElementById("saveAudio").checked = result.saveAudio;
-      document.getElementById("debugEnabled").checked = result.debugEnabled;
-      document.getElementById("lastTranscription").value =
-        result.lastTranscription || "Нет данных";
+      const enableNotificationsEl = document.getElementById("enableNotifications");
+      if (enableNotificationsEl) enableNotificationsEl.checked = result.enableNotifications;
+      
+      const saveAudioEl = document.getElementById("saveAudio");
+      if (saveAudioEl) saveAudioEl.checked = result.saveAudio;
+      
+      const debugEnabledEl = document.getElementById("debugEnabled");
+      if (debugEnabledEl) debugEnabledEl.checked = result.debugEnabled;
+      
+      const lastTranscriptionEl = document.getElementById("lastTranscription");
+      if (lastTranscriptionEl) lastTranscriptionEl.value = result.lastTranscription || "Нет данных";
 
       const errTextarea = document.getElementById("errorLog");
       if (result.errorLog.length === 0) {
@@ -130,9 +135,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const promptModeSelect = document.getElementById("promptModeSelect");
     const mode = promptModeSelect ? promptModeSelect.value : "default";
 
-    const notify = document.getElementById("enableNotifications").checked;
-    const saveAudio = document.getElementById("saveAudio").checked;
-    const debug = document.getElementById("debugEnabled").checked;
+    const notifyEl = document.getElementById("enableNotifications");
+    const notify = notifyEl ? notifyEl.checked : true;
+    
+    const saveAudioEl = document.getElementById("saveAudio");
+    const saveAudio = saveAudioEl ? saveAudioEl.checked : false;
+    
+    const debugEl = document.getElementById("debugEnabled");
+    const debug = debugEl ? debugEl.checked : false;
 
     chrome.storage.local.set(
       {

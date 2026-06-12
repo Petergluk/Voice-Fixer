@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { Mic, Square, Activity } from 'lucide-react';
+import { Mic, Square, Activity, Settings } from 'lucide-react';
 
 // PuuNote Plugin API Types (Заглушки типов для сборки)
 type PluginAPI = any;
@@ -34,6 +34,73 @@ const DEFAULT_PROMPT = `Ты расшифровщик и корректор те
 !IMPORTANT! При оптимизации текста сохраняй оригинальный тон и стиль.  Например, при расшифровке аудио-практик, избегай замены  разрешающих формулировок, таких как «можно», «и может быть» - конструкцями в повелительном наклонении, прямыми командами или повествованием от первого лица. Например, не надо заменять "И можно начать мягко раскачивать дыхание" на повелительное "Начните раскачивать дыхание". Сохраняй предполагаемый уровень взаимодействия говорящего с аудиторией.
 
 Ты возвращаешь только расшифрованный текст и больше ничего.`;
+
+const DEFAULT_CONCISE_PROMPT = `Ты ИИ-редактор. Твоя задача — сделать из сумбурной устной речи четкий, лаконичный и структурированный текст.
+
+Задачи:
+- Очистить текст от воды, бессмысленных повторов и слов-паразитов.
+- Извлечь главную мысль и ключевые факты.
+- Переписать текст структурно, максимально лаконично, по существу.
+- Разбить на логичные короткие абзацы или пункты.
+- Сохранить общую суть, но сократить объем без потери важных деталей.
+
+Выведи ТОЛЬКО готовый текст без предисловий.`;
+
+function VoiceFixerSettings() {
+  const [mode, setMode] = useState(() => pluginApi?.settings?.get('promptMode', 'default'));
+  const [defaultPrompt, setDefaultPrompt] = useState(() => pluginApi?.settings?.get('sysPrompt_default', DEFAULT_PROMPT));
+  const [concisePrompt, setConcisePrompt] = useState(() => pluginApi?.settings?.get('sysPrompt_concise', DEFAULT_CONCISE_PROMPT));
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-1">
+        <label className="text-sm font-medium text-app-text-primary">Режим (Шаблон промпта)</label>
+        <select 
+           value={mode}
+           onChange={(e) => {
+             setMode(e.target.value);
+             pluginApi?.settings?.set('promptMode', e.target.value);
+           }}
+           className="w-full bg-app-input-bg border border-app-border rounded px-3 py-2 text-sm text-app-text-primary focus:ring-1 focus:ring-inset focus:ring-app-accent outline-none"
+        >
+          <option value="default">Точная расшифровка (по умолчанию)</option>
+          <option value="concise">Лаконичная выжимка (сжатие смысла)</option>
+        </select>
+        <p className="text-xs text-app-text-muted mt-1">
+          Выберите формат обработки аудио для новых записей.
+        </p>
+      </div>
+      
+      {mode === 'default' && (
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-app-text-primary">Системный промпт (Точная расшифровка)</label>
+          <textarea 
+            value={defaultPrompt}
+            onChange={(e) => {
+              setDefaultPrompt(e.target.value);
+              pluginApi?.settings?.set('sysPrompt_default', e.target.value);
+            }}
+            className="w-full h-48 bg-app-input-bg border border-app-border rounded px-3 py-2 text-sm text-app-text-primary focus:ring-1 focus:ring-inset focus:ring-app-accent outline-none resize-y"
+          />
+        </div>
+      )}
+
+      {mode === 'concise' && (
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium text-app-text-primary">Системный промпт (Лаконичная выжимка)</label>
+          <textarea 
+            value={concisePrompt}
+            onChange={(e) => {
+              setConcisePrompt(e.target.value);
+              pluginApi?.settings?.set('sysPrompt_concise', e.target.value);
+            }}
+            className="w-full h-48 bg-app-input-bg border border-app-border rounded px-3 py-2 text-sm text-app-text-primary focus:ring-1 focus:ring-inset focus:ring-app-accent outline-none resize-y"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 const RecordingModal = ({ targetNodeId, onClose }: { targetNodeId: string | null, onClose: () => void }) => {
   const [recordingTime, setRecordingTime] = useState(0);
@@ -183,42 +250,24 @@ const RecordingModal = ({ targetNodeId, onClose }: { targetNodeId: string | null
         const base64Data = (reader.result as string).split(',')[1];
         pluginApi?.updateJobProgress(jobId, 30, "Отправка в Gemini...");
         
-        // Получаем ключ API 
-        let apiKey = localStorage.getItem('GEMINI_PLUGIN_API_KEY');
-        if (!apiKey) {
-          apiKey = window.prompt("Введите ваш ключ API для Gemini (он сохранится в браузере):");
-          if (apiKey) localStorage.setItem('GEMINI_PLUGIN_API_KEY', apiKey);
-        }
+        const mode = pluginApi?.settings?.get('promptMode', 'default');
+        const sysPrompt = mode === 'concise' 
+            ? pluginApi?.settings?.get('sysPrompt_concise', DEFAULT_CONCISE_PROMPT) 
+            : pluginApi?.settings?.get('sysPrompt_default', DEFAULT_PROMPT);
 
-        if (!apiKey) {
-          pluginApi?.failJob(jobId, "API ключ не предоставлен");
-          return;
-        }
-
-        const response = await fetch(\`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=\${apiKey}\`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{
-              role: "user",
-              parts: [
-                { text: "Пожалуйста, транскрибируй эту аудиозапись и примени все инструкции по корректуре, указанные в системном промпте." },
-                { inlineData: { data: base64Data, mimeType: mimeType } }
-              ]
-            }],
-            systemInstruction: {
-              parts: [{ text: DEFAULT_PROMPT }]
-            }
-          })
+        // Используем встроенный в приложение API-вызов с учетом фоллбэков
+        // Песочница сэмулирует этот запрос
+        const result = await pluginApi?.llm?.generateText([
+           { role: "user", parts: [
+              { text: "Пожалуйста, транскрибируй эту аудиозапись и примени все инструкции по корректуре, указанные в системном промпте." },
+              { inlineData: { data: base64Data, mimeType: mimeType } }
+           ]}
+        ], { 
+           systemInstruction: sysPrompt 
         });
 
-        if (!response.ok) {
-          throw new Error(\`Ошибка HTTP: \${response.status}\`);
-        }
-        
         pluginApi?.updateJobProgress(jobId, 80, "Обработка отклика...");
-        const data = await response.json();
-        const transcript = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        const transcript = result?.text;
 
         if (transcript) {
           const store = pluginApi?.getState();
@@ -360,6 +409,8 @@ export const voiceFixerPlugin: PluginDefinition = {
     }
   },
 
+  settingsComponent: VoiceFixerSettings,
+
   commands: [
     {
       id: "voice-fixer-record",
@@ -383,3 +434,4 @@ export const voiceFixerPlugin: PluginDefinition = {
     }
   ]
 };
+

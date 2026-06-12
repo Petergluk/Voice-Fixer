@@ -8,32 +8,40 @@ function MyPluginSettings() {
   const [apiKey, setApiKey] = useState(() => pluginApi?.settings?.get('api_key', ''));
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-5">
       <p className="text-sm text-app-text-secondary">
         Это демонстрационный компонент настроек плагина. Вы можете использовать любые React хуки (useState, useEffect и т.д.) здесь.
       </p>
-      <label className="flex items-center gap-2 text-sm text-app-text-primary">
+
+      <div className="flex flex-col gap-1">
+        <label className="text-sm font-medium text-app-text-primary">Включить магические функции</label>
+        <label className="flex items-center gap-2 text-sm text-app-text-secondary cursor-pointer">
+          <input 
+            type="checkbox" 
+            checked={magic}
+            onChange={(e) => {
+              setMagic(e.target.checked);
+              pluginApi?.settings?.set('magic_enabled', e.target.checked);
+            }}
+            className="rounded border-app-border bg-app-input-bg text-app-accent focus:ring-app-accent" 
+          />
+          Сохраняется в api.settings
+        </label>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label className="text-sm font-medium text-app-text-primary">API Ключ</label>
         <input 
-          type="checkbox" 
-          checked={magic}
+          type="text"
+          value={apiKey}
           onChange={(e) => {
-            setMagic(e.target.checked);
-            pluginApi?.settings?.set('magic_enabled', e.target.checked);
+            setApiKey(e.target.value);
+            pluginApi?.settings?.set('api_key', e.target.value);
           }}
-          className="rounded border-app-border bg-app-input-bg text-app-accent focus:ring-app-accent" 
+          placeholder="API Ключ или параметр..." 
+          className="w-full rounded-md border border-app-border bg-app-input-bg px-3 py-2 text-sm text-app-text-primary focus:border-app-accent focus:outline-none focus:ring-1 focus:ring-inset focus:ring-app-accent transition-shadow"
         />
-        Включить магические функции (сохраняется в api.settings)
-      </label>
-      <input 
-        type="text"
-        value={apiKey}
-        onChange={(e) => {
-          setApiKey(e.target.value);
-          pluginApi?.settings?.set('api_key', e.target.value);
-        }}
-        placeholder="API Ключ или параметр..." 
-        className="w-full px-3 py-2 rounded-lg border border-app-border bg-app-input-bg text-app-text-primary focus:outline-app-accent text-sm"
-      />
+      </div>
     </div>
   );
 }

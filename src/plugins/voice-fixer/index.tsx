@@ -175,6 +175,17 @@ const DEFAULT_INSTRUCTION = `Задачи:
 
 Выведи ТОЛЬКО конечный чистый текст. Никаких префиксов вроде "Вот текст:" не нужно.`;
 
+const DEFAULT_CONCISE_SYSTEM_PROMPT = `Ты ИИ-редактор. Твоя задача — сделать из сумбурной устной речи четкий, лаконичный и структурированный текст.`;
+
+const DEFAULT_CONCISE_INSTRUCTION = `Задачи:
+- Очистить текст от воды, бессмысленных повторов и слов-паразитов.
+- Извлечь главную мысль и ключевые факты.
+- Переписать текст структурно, максимально лаконично, по существу.
+- Разбить на логичные короткие абзацы или пункты.
+- Сохранить общую суть, но сократить объем без потери важных деталей.
+
+Выведи ТОЛЬКО готовый текст без предисловий.`;
+
 function unmountOverlay() {
   pluginApi?.ui?.closeOverlay("vf-recording");
 }
@@ -230,11 +241,23 @@ async function startRecording(nodeId: string) {
       pluginApi?.updateJobProgress?.(jobId, 25, "Подготовка к отправке...");
 
       try {
-        const sysPrompt = localStorage.getItem("VOICE_FIXER_SYSTEM_PROMPT") ?? DEFAULT_SYSTEM_PROMPT;
-        const instruction = localStorage.getItem("VOICE_FIXER_INSTRUCTION") ?? DEFAULT_INSTRUCTION;
+        const mode = localStorage.getItem("VOICE_FIXER_PROMPT_MODE") || "default";
+        
+        // Legacy migration
+        let storedSys = localStorage.getItem("VOICE_FIXER_SYSTEM_PROMPT") ?? DEFAULT_SYSTEM_PROMPT;
+        let storedInst = localStorage.getItem("VOICE_FIXER_INSTRUCTION") ?? DEFAULT_INSTRUCTION;
+
+        let sysPrompt = mode === "concise" 
+          ? (localStorage.getItem("VOICE_FIXER_CONCISE_SYS") ?? DEFAULT_CONCISE_SYSTEM_PROMPT)
+          : storedSys;
+          
+        let instruction = mode === "concise"
+          ? (localStorage.getItem("VOICE_FIXER_CONCISE_INSTR") ?? DEFAULT_CONCISE_INSTRUCTION)
+          : storedInst;
+
         let targetModels = localStorage.getItem("VOICE_FIXER_MODELS")?.trim();
         if (!targetModels) {
-          targetModels = localStorage.getItem("GLOBAL_GEMINI_MODELS") || "gemini-2.5-pro,gemini-3.5-flash,gemini-3-flash-preview,gemini-2.5-flash,gemini-3.1-flash-lite";
+          targetModels = localStorage.getItem("GLOBAL_GEMINI_MODELS") || "gemini-3.5-flash,gemini-3-flash-preview,gemini-2.5-flash,gemini-3.1-flash-lite";
         }
         let modelsList = targetModels.split(",").map(s => s.trim()).filter(Boolean);
 
@@ -349,8 +372,11 @@ function cancelRecording() {
 
 
 function VoiceFixerSettings() {
+  const [promptMode, setPromptMode] = useState("default");
   const [sysPrompt, setSysPrompt] = useState("");
   const [instruction, setInstruction] = useState("");
+  const [conciseSysPrompt, setConciseSysPrompt] = useState("");
+  const [conciseInstruction, setConciseInstruction] = useState("");
   const [models, setModels] = useState("");
   const [smartRouting, setSmartRouting] = useState(false);
   const [timeoutSec, setTimeoutSec] = useState("");
@@ -359,10 +385,11 @@ function VoiceFixerSettings() {
   const [structureMode, setStructureMode] = useState("single");
 
   useEffect(() => {
-    // If empty or never set, show the defaults so the user sees them.
-    // If the user actually cleared it, it might restore the default, which is usually safer anyway.
+    setPromptMode(localStorage.getItem("VOICE_FIXER_PROMPT_MODE") || "default");
     setSysPrompt(localStorage.getItem("VOICE_FIXER_SYSTEM_PROMPT") ?? DEFAULT_SYSTEM_PROMPT);
     setInstruction(localStorage.getItem("VOICE_FIXER_INSTRUCTION") ?? DEFAULT_INSTRUCTION);
+    setConciseSysPrompt(localStorage.getItem("VOICE_FIXER_CONCISE_SYS") ?? DEFAULT_CONCISE_SYSTEM_PROMPT);
+    setConciseInstruction(localStorage.getItem("VOICE_FIXER_CONCISE_INSTR") ?? DEFAULT_CONCISE_INSTRUCTION);
     setModels(localStorage.getItem("VOICE_FIXER_MODELS") || "");
     setSmartRouting(localStorage.getItem("VOICE_FIXER_SMART_ROUTING") === "true");
     setTimeoutSec(localStorage.getItem("VOICE_FIXER_TIMEOUT") || "180");
@@ -372,8 +399,11 @@ function VoiceFixerSettings() {
   }, []);
 
   const handleSave = () => {
+    localStorage.setItem("VOICE_FIXER_PROMPT_MODE", promptMode);
     localStorage.setItem("VOICE_FIXER_SYSTEM_PROMPT", sysPrompt);
     localStorage.setItem("VOICE_FIXER_INSTRUCTION", instruction);
+    localStorage.setItem("VOICE_FIXER_CONCISE_SYS", conciseSysPrompt);
+    localStorage.setItem("VOICE_FIXER_CONCISE_INSTR", conciseInstruction);
     localStorage.setItem("VOICE_FIXER_MODELS", models);
     localStorage.setItem("VOICE_FIXER_SMART_ROUTING", smartRouting.toString());
     localStorage.setItem("VOICE_FIXER_TIMEOUT", timeoutSec);
@@ -475,24 +505,67 @@ function VoiceFixerSettings() {
       </div>
 
       <label className="flex flex-col gap-1 text-sm text-app-text-primary">
-        <span>Системный промпт (роль и контекст)</span>
-        <textarea 
-          value={sysPrompt}
-          onChange={(e) => setSysPrompt(e.target.value)}
-          placeholder="Системный промпт..." 
-          className="w-full px-3 py-2 rounded-lg border border-app-border bg-app-input-bg text-app-text-primary h-16 resize-y focus:ring-1 focus:ring-inset focus:ring-app-accent focus:outline-none text-sm"
-        />
+        <span>Режим (Шаблон промпта)</span>
+        <select 
+          value={promptMode}
+          onChange={(e) => setPromptMode(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg border border-app-border bg-app-input-bg text-app-text-primary focus:ring-1 focus:ring-inset focus:ring-app-accent focus:outline-none text-sm"
+        >
+          <option value="default">Точная расшифровка (по умолчанию)</option>
+          <option value="concise">Лаконичная выжимка (сжатие смысла)</option>
+        </select>
+        <span className="text-xs text-app-text-secondary opacity-70">
+          Выберите формат обработки аудио для новых записей.
+        </span>
       </label>
 
-      <label className="flex flex-col gap-1 text-sm text-app-text-primary">
-        <span>Инструкции / Правила расшифровки</span>
-        <textarea 
-          value={instruction}
-          onChange={(e) => setInstruction(e.target.value)}
-          placeholder="Подробные инструкции..." 
-          className="w-full px-3 py-2 rounded-lg border border-app-border bg-app-input-bg text-app-text-primary h-64 resize-y focus:ring-1 focus:ring-inset focus:ring-app-accent focus:outline-none text-sm text-[13px] leading-relaxed"
-        />
-      </label>
+      {promptMode === 'default' && (
+        <>
+          <label className="flex flex-col gap-1 text-sm text-app-text-primary">
+            <span>Системный промпт (Точная расшифровка)</span>
+            <textarea 
+              value={sysPrompt}
+              onChange={(e) => setSysPrompt(e.target.value)}
+              placeholder="Системный промпт..." 
+              className="w-full px-3 py-2 rounded-lg border border-app-border bg-app-input-bg text-app-text-primary h-16 resize-y focus:ring-1 focus:ring-inset focus:ring-app-accent focus:outline-none text-sm"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm text-app-text-primary">
+            <span>Инструкции / Правила расшифровки</span>
+            <textarea 
+              value={instruction}
+              onChange={(e) => setInstruction(e.target.value)}
+              placeholder="Подробные инструкции..." 
+              className="w-full px-3 py-2 rounded-lg border border-app-border bg-app-input-bg text-app-text-primary h-64 resize-y focus:ring-1 focus:ring-inset focus:ring-app-accent focus:outline-none text-sm text-[13px] leading-relaxed"
+            />
+          </label>
+        </>
+      )}
+
+      {promptMode === 'concise' && (
+        <>
+          <label className="flex flex-col gap-1 text-sm text-app-text-primary">
+            <span>Системный промпт (Лаконичная выжимка)</span>
+            <textarea 
+              value={conciseSysPrompt}
+              onChange={(e) => setConciseSysPrompt(e.target.value)}
+              placeholder="Системный промпт..." 
+              className="w-full px-3 py-2 rounded-lg border border-app-border bg-app-input-bg text-app-text-primary h-16 resize-y focus:ring-1 focus:ring-inset focus:ring-app-accent focus:outline-none text-sm"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm text-app-text-primary">
+            <span>Инструкции / Правила (Лаконичная выжимка)</span>
+            <textarea 
+              value={conciseInstruction}
+              onChange={(e) => setConciseInstruction(e.target.value)}
+              placeholder="Подробные инструкции..." 
+              className="w-full px-3 py-2 rounded-lg border border-app-border bg-app-input-bg text-app-text-primary h-64 resize-y focus:ring-1 focus:ring-inset focus:ring-app-accent focus:outline-none text-sm text-[13px] leading-relaxed"
+            />
+          </label>
+        </>
+      )}
 
       <button
         onClick={handleSave}
