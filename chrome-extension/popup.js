@@ -54,16 +54,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const quickMode = document.getElementById("quickPromptMode");
   if (quickMode) {
-    chrome.storage.local.get([
-      "promptMode", 
-      "sysPrompt_default",
-      "sysPrompt_concise"
-    ], (res) => {
-      quickMode.value = res.promptMode || "default";
-      
-      quickMode.addEventListener("change", () => {
-        const mode = quickMode.value;
-        const d_sys = `Ты расшифровщик и корректор текста. Твоя специализация - транскрипт аудиофайлов, вычитка, очистка, оптимизация расшифровок разговорной речи.
+    chrome.storage.local.get(
+      ["promptMode", "sysPrompt_default", "sysPrompt_concise"],
+      (res) => {
+        quickMode.value = res.promptMode || "default";
+
+        quickMode.addEventListener("change", () => {
+          const mode = quickMode.value;
+          const d_sys = `Ты расшифровщик и корректор текста. Твоя специализация - транскрипт аудиофайлов, вычитка, очистка, оптимизация расшифровок разговорной речи.
 
 Задачи:
 - исправить ошибки распознавания по смыслу.
@@ -76,8 +74,8 @@ document.addEventListener("DOMContentLoaded", () => {
 !IMPORTANT! При оптимизации текста сохраняй оригинальный тон и стиль. Например, при расшифровке аудио-практик, избегай замены разрешающих формулировок, таких как «можно», «и может быть» - конструкциями в повелительном наклонении.
 
 Выведи ТОЛЬКО конечный чистый текст. Никаких префиксов вроде "Вот текст:" не нужно.`;
-        
-        const c_sys = `Ты ИИ-редактор. Твоя задача — сделать из сумбурной устной речи четкий, лаконичный и структурированный текст.
+
+          const c_sys = `Ты ИИ-редактор. Твоя задача — сделать из сумбурной устной речи четкий, лаконичный и структурированный текст.
 
 Задачи:
 - Очистить текст от воды, бессмысленных повторов и слов-паразитов.
@@ -88,52 +86,84 @@ document.addEventListener("DOMContentLoaded", () => {
 
 Выведи ТОЛЬКО готовый текст без предисловий.`;
 
-        let newSys = mode === "default" ? (res.sysPrompt_default || d_sys) : (res.sysPrompt_concise || c_sys);
+          let newSys =
+            mode === "default"
+              ? res.sysPrompt_default || d_sys
+              : res.sysPrompt_concise || c_sys;
 
-        chrome.storage.local.set({
-          promptMode: mode,
-          systemPrompt: newSys
+          chrome.storage.local.set({
+            promptMode: mode,
+            systemPrompt: newSys,
+          });
         });
-      });
-    });
+      },
+    );
   }
 
   startRecording();
 });
+
+let audioPort = null;
+let currentTabId = null;
 
 async function startRecording() {
   try {
     // Всплывающее окно запрашивает доступ к микрофону
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-    chrome.storage.local.get({ audioBitrate: 32000 }, (result) => {
-      const options = { mimeType: "audio/webm", audioBitsPerSecond: result.audioBitrate };
-      mediaRecorder = new MediaRecorder(stream, options);
-      audioChunks = [];
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]) {
+        currentTabId = tabs[0].id;
+        audioPort = chrome.runtime.connect({ name: "audio-stream" });
+        audioPort.postMessage({ action: "START_STREAM", tabId: currentTabId });
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunks.push(e.data);
-      };
+        chrome.storage.local.get({ audioBitrate: 32000 }, (result) => {
+          const options = {
+            mimeType: "audio/webm",
+            audioBitsPerSecond: result.audioBitrate,
+          };
+          mediaRecorder = new MediaRecorder(stream, options);
+          audioChunks = [];
 
-      mediaRecorder.onstop = handleAudioStop;
+          mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0 && !isCancelled) {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const base64Chunk = reader.result.split(",")[1];
+                if (audioPort) {
+                  audioPort.postMessage({
+                    action: "AUDIO_CHUNK",
+                    data: base64Chunk,
+                  });
+                }
+              };
+              reader.readAsDataURL(e.data);
+            }
+          };
 
-      mediaRecorder.start();
-      recording = true;
-      isCancelled = false;
+          mediaRecorder.onstop = handleAudioStop;
 
-      // Запуск визуализатора
-      visualize(stream);
+          // Используем timeslice 500ms, чтобы порции данных шли в background
+          // Если popup закроется, у фона уже будут собраны почти все данные
+          mediaRecorder.start(500);
+          recording = true;
+          isCancelled = false;
 
-      // Обновляем UI
-      controlsStart.style.display = "none";
-      controlsRecording.style.display = "flex";
-      statusDiv.textContent =
-        "Идет запись... Говорите. (Не закрывайте это окно до остановки записи!)";
+          // Запуск визуализатора
+          visualize(stream);
 
-      startTime = Date.now();
-      timerDiv.style.display = "block";
-      updateTimer(); // Первый апдейт
-      timerInterval = setInterval(updateTimer, 1000);
+          // Обновляем UI
+          controlsStart.style.display = "none";
+          controlsRecording.style.display = "flex";
+          statusDiv.textContent =
+            "Идет запись... Говорите. (Не закрывайте это окно до остановки записи!)";
+
+          startTime = Date.now();
+          timerDiv.style.display = "block";
+          updateTimer(); // Первый апдейт
+          timerInterval = setInterval(updateTimer, 1000);
+        });
+      }
     });
   } catch (err) {
     console.error("Mic Access Error:", err);
@@ -155,6 +185,9 @@ function updateTimer() {
 
 function stopRecording() {
   if (mediaRecorder && recording) {
+    if (isCancelled && audioPort) {
+      audioPort.postMessage({ action: "CANCEL_STREAM" });
+    }
     mediaRecorder.stop();
     // Останавливаем стрим микрофона, чтобы пропал красный значок
     mediaRecorder.stream.getTracks().forEach((track) => track.stop());
@@ -234,6 +267,10 @@ async function handleAudioStop() {
   if (isCancelled) {
     statusDiv.textContent = "Запись отменена.";
     isCancelled = false;
+    if (audioPort) {
+      audioPort.disconnect();
+      audioPort = null;
+    }
     return;
   }
 
@@ -244,31 +281,18 @@ async function handleAudioStop() {
   const durationSec = startTime
     ? Math.max(1, Math.round((Date.now() - startTime) / 1000))
     : 10;
-  const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-  const base64Data = await blobToBase64(audioBlob);
 
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs[0]) {
-      chrome.runtime.sendMessage({
-        action: "PROCESS_AUDIO",
-        audioBase64: base64Data,
-        duration: durationSec,
-        tabId: tabs[0].id,
-      });
-      setTimeout(() => window.close(), 1500); // Закрываем попап
+  if (audioPort) {
+    audioPort.postMessage({ action: "STOP_STREAM", duration: durationSec });
+  }
+
+  setTimeout(() => {
+    if (audioPort) {
+      audioPort.disconnect();
+      audioPort = null;
     }
-  });
-}
-
-function blobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      resolve(reader.result.split(",")[1]);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+    window.close();
+  }, 1000); // Дадим время последнему чанку уйти
 }
 
 // Удалены старые функции работы с Gemini из popup - теперь это делается в background.js

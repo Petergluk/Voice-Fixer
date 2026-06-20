@@ -1,4 +1,5 @@
 let activeTasks = {};
+let audioStreams = {};
 
 async function logDebug(msg) {
   const data = await chrome.storage.local.get({
@@ -19,6 +20,72 @@ async function logErrorOut(errMessage) {
   log.unshift({ time: new Date().toISOString(), message: errMessage });
   if (log.length > 50) log.pop();
   await chrome.storage.local.set({ errorLog: log });
+}
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === "audio-stream") {
+    logDebug("Audio stream port connected");
+    let currentTabId = null;
+    let isCancelled = false;
+    let finalDuration = 10;
+
+    port.onMessage.addListener((msg) => {
+      if (msg.action === "START_STREAM") {
+        currentTabId = msg.tabId;
+        audioStreams[currentTabId] = [];
+      } else if (msg.action === "AUDIO_CHUNK") {
+        if (currentTabId && audioStreams[currentTabId]) {
+          audioStreams[currentTabId].push(msg.data);
+        }
+      } else if (msg.action === "CANCEL_STREAM") {
+        isCancelled = true;
+        if (currentTabId && audioStreams[currentTabId]) {
+          delete audioStreams[currentTabId];
+        }
+      } else if (msg.action === "STOP_STREAM") {
+        finalDuration = msg.duration;
+      }
+    });
+
+    port.onDisconnect.addListener(() => {
+      logDebug(
+        `Audio stream port disconnected. tabId: ${currentTabId}, cancelled: ${isCancelled}`,
+      );
+      if (currentTabId && audioStreams[currentTabId] && !isCancelled) {
+        const chunksBase64Array = audioStreams[currentTabId];
+        delete audioStreams[currentTabId];
+
+        if (chunksBase64Array.length > 0) {
+          logDebug("Processing recovered stream chunks due to disconnect...");
+          processChunksAsBlobs(chunksBase64Array, currentTabId, finalDuration);
+        }
+      }
+    });
+  }
+});
+
+async function processChunksAsBlobs(base64ChunksArray, tabId, duration) {
+  try {
+    const blobs = base64ChunksArray.map((b64) => {
+      const byteCharacters = atob(b64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      return new Blob([byteArray], { type: "audio/webm" });
+    });
+
+    const fullBlob = new Blob(blobs, { type: "audio/webm" });
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64Data = reader.result.split(",")[1];
+      processAudioInBackground(base64Data, tabId, duration);
+    };
+    reader.readAsDataURL(fullBlob);
+  } catch (e) {
+    console.error("Error processing recovered chunks", e);
+  }
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -165,12 +232,15 @@ async function processAudioInBackground(
     }
 
     const timeoutMs = (result.geminiTimeout || 3) * 60000;
-    
+
     let finalPrompt = result.systemPrompt;
-    if (result.instruction && !finalPrompt.includes(result.instruction.substring(0, 50))) {
+    if (
+      result.instruction &&
+      !finalPrompt.includes(result.instruction.substring(0, 50))
+    ) {
       finalPrompt += "\n\n" + result.instruction;
     }
-    
+
     const text = await sendWithFallback(
       base64Audio,
       result.geminiApiKey,
@@ -267,7 +337,7 @@ async function sendWithFallback(
     autoFallback: true,
     smartRouting: false,
     modelStats: {},
-    lastSuccessModel: null
+    lastSuccessModel: null,
   });
   const state = ObjectState;
   const invalidKeys = new Set(state.invalidKeys || []);
@@ -294,7 +364,7 @@ async function sendWithFallback(
     "gemini-2.5-flash",
     "gemini-3.1-flash-lite",
   ];
-  
+
   let baseModels = Array.from(new Set([initialModel, ...fallbackModels]));
 
   if (state.smartRouting) {
@@ -314,7 +384,7 @@ async function sendWithFallback(
 
   for (let i = 0; i < queue.length; i++) {
     const currentModel = queue[i];
-    
+
     for (let k = 0; k < iterKeys.length; k++) {
       const key = iterKeys[k];
       try {
@@ -479,7 +549,7 @@ async function sendWithFallback(
         ) {
           break; // Проблема на бэке Google или прервано - другой ключ не поможет, нужна другая модель
         }
-        
+
         if (
           errMsg.includes("key") ||
           errMsg.includes("quota") ||
@@ -676,7 +746,7 @@ function showToast(message, isError, isSticky = false, isProcessing = false) {
       const m = Math.floor(s / 60);
       const sec = s % 60;
       el.textContent = `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
-      
+
       // Ping background to keep Service Worker alive during long requests
       if (s % 15 === 0) {
         try {
