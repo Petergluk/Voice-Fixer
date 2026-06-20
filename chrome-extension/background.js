@@ -23,6 +23,10 @@ async function logErrorOut(errMessage) {
 }
 
 chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === "keepAlive") {
+    // Just keep it open to prevent Service Worker from sleeping
+    return;
+  }
   if (port.name === "audio-stream") {
     logDebug("Audio stream port connected");
     let currentTabId = null;
@@ -95,8 +99,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       request.audioBase64,
       request.tabId,
       request.duration,
-    );
-    sendResponse({ status: "started" });
+    )
+      .then(() => sendResponse({ status: "started" }))
+      .catch(() => sendResponse({ status: "error" }));
+    return true;
   } else if (request.action === "PROCESS_AUDIO_FALLBACK") {
     logDebug(`message PROCESS_AUDIO_FALLBACK received`);
     const tId = sender.tab ? sender.tab.id : request.tabId;
@@ -105,8 +111,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       tId,
       request.duration || 10,
       true,
-    );
-    sendResponse({ status: "started" });
+    )
+      .then(() => sendResponse({ status: "started" }))
+      .catch(() => sendResponse({ status: "error" }));
+    return true;
   } else if (request.action === "CANCEL_TASK") {
     const tId = sender.tab ? sender.tab.id : request.tabId;
     logDebug(`message CANCEL_TASK for tabId=${tId}`);
@@ -607,7 +615,6 @@ async function sendToGemini(
 
   // Надежный таймаут (не засыпает при SleepMode)
   let combinedSignal = userController.signal;
-  let timeoutController = null;
   let timeoutId = null;
 
   if (
@@ -618,15 +625,11 @@ async function sendToGemini(
     combinedSignal = AbortSignal.any([userController.signal, timeoutSignal]);
   } else {
     // Фолбэк для старых версий Chrome
-    timeoutController = new AbortController();
-    timeoutId = setTimeout(
-      () => timeoutController.abort(new Error("TimeoutError")),
-      timeoutMs,
-    );
-    combinedSignal =
-      typeof AbortSignal.any === "function"
-        ? AbortSignal.any([userController.signal, timeoutController.signal])
-        : userController.signal; // Если совсем старый хром, просто верим в лучшее
+    timeoutId = setTimeout(() => {
+      const err = new Error("TimeoutError");
+      err.name = "TimeoutError";
+      userController.abort(err);
+    }, timeoutMs);
   }
 
   try {
@@ -664,9 +667,7 @@ async function sendToGemini(
     const action = activeTasks[tabId]?.action;
 
     // Проверка нативный TimeoutError или наш кастомный
-    const isTimeout =
-      err.name === "TimeoutError" ||
-      (timeoutController && timeoutController.signal.aborted);
+    const isTimeout = err.name === "TimeoutError";
     const isUserAbort = err.name === "AbortError" && !isTimeout;
 
     if (isTimeout && !action) {
@@ -753,6 +754,23 @@ function showToast(message, isError, isSticky = false, isProcessing = false) {
           if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
             chrome.runtime.sendMessage({ action: "HEARTBEAT" }).catch(() => {});
           }
+        } catch (e) {}
+      }
+
+      // Настоящий механизм keep-alive для MV3
+      if (
+        !window.vfKeepAlivePort &&
+        chrome &&
+        chrome.runtime &&
+        chrome.runtime.connect
+      ) {
+        try {
+          window.vfKeepAlivePort = chrome.runtime.connect({
+            name: "keepAlive",
+          });
+          window.vfKeepAlivePort.onDisconnect.addListener(() => {
+            window.vfKeepAlivePort = null;
+          });
         } catch (e) {}
       }
     }, 1000);
