@@ -136,10 +136,24 @@ var AudioRecorder = class {
   constructor() {
     this.mediaRecorder = null;
     this.audioChunks = [];
+    this.audioContext = null;
+    this.analyser = null;
+    this.dataArray = null;
+    this.onAudioLevelUpdate = null;
+    this.animationFrameId = null;
+  }
+  setAudioLevelCallback(callback) {
+    this.onAudioLevelUpdate = callback;
   }
   async startRecording(bitrate = 32e3) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      this.audioContext = new AudioContext();
+      const source = this.audioContext.createMediaStreamSource(stream);
+      this.analyser = this.audioContext.createAnalyser();
+      this.analyser.fftSize = 256;
+      source.connect(this.analyser);
+      this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
       let options = { mimeType: "audio/webm" };
       if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
         options = { mimeType: "audio/webm;codecs=opus", audioBitsPerSecond: bitrate };
@@ -154,6 +168,22 @@ var AudioRecorder = class {
         }
       };
       this.mediaRecorder.start();
+      const updateLevel = () => {
+        var _a;
+        if (this.analyser && this.dataArray && this.onAudioLevelUpdate) {
+          this.analyser.getByteFrequencyData(this.dataArray);
+          let sum = 0;
+          for (let i = 0; i < this.dataArray.length; i++) {
+            sum += this.dataArray[i];
+          }
+          const average = sum / this.dataArray.length;
+          this.onAudioLevelUpdate(average);
+        }
+        if (((_a = this.mediaRecorder) == null ? void 0 : _a.state) === "recording") {
+          this.animationFrameId = requestAnimationFrame(updateLevel);
+        }
+      };
+      updateLevel();
     } catch (error) {
       console.error("Error accessing microphone:", error);
       throw error;
@@ -164,12 +194,22 @@ var AudioRecorder = class {
       if (!this.mediaRecorder) {
         return reject(new Error("No recording in progress"));
       }
+      if (this.animationFrameId) {
+        cancelAnimationFrame(this.animationFrameId);
+        this.animationFrameId = null;
+      }
       this.mediaRecorder.onstop = async () => {
         var _a;
         const audioBlob = new Blob(this.audioChunks, { type: "audio/webm" });
         const base64 = await this.blobToBase64(audioBlob);
         (_a = this.mediaRecorder) == null ? void 0 : _a.stream.getTracks().forEach((track) => track.stop());
         this.mediaRecorder = null;
+        if (this.audioContext) {
+          await this.audioContext.close();
+          this.audioContext = null;
+          this.analyser = null;
+          this.dataArray = null;
+        }
         resolve(base64);
       };
       this.mediaRecorder.stop();
@@ -271,32 +311,122 @@ var RecordingModal = class extends import_obsidian3.Modal {
     this.isRecording = false;
     this.timerInterval = null;
     this.startTime = 0;
+    this.visualizerBars = [];
     this.plugin = plugin;
   }
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Voice Fixer: \u0414\u0438\u043A\u0442\u043E\u0432\u043A\u0430", cls: "vf-modal-title" });
-    this.statusDisplay = contentEl.createEl("p", { text: "\u0418\u0434\u0435\u0442 \u0437\u0430\u043F\u0438\u0441\u044C... \u0413\u043E\u0432\u043E\u0440\u0438\u0442\u0435 \u0447\u0435\u0442\u043A\u043E.", cls: "vf-status-text" });
-    this.statusDisplay.style.color = "var(--text-muted)";
-    this.timeDisplay = contentEl.createEl("div", { text: "00:00", cls: "vf-timer" });
-    this.timeDisplay.style.fontSize = "2.5em";
-    this.timeDisplay.style.fontWeight = "bold";
-    this.timeDisplay.style.textAlign = "center";
-    this.timeDisplay.style.margin = "20px 0";
-    this.timeDisplay.style.color = "var(--text-accent)";
-    const buttonContainer = contentEl.createEl("div", { cls: "vf-button-container" });
-    buttonContainer.style.display = "flex";
-    buttonContainer.style.justifyContent = "center";
-    buttonContainer.style.gap = "15px";
-    buttonContainer.style.marginTop = "20px";
-    const stopBtn = buttonContainer.createEl("button", { text: "\u23F9 \u041E\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C \u0438 \u0420\u0430\u0441\u0448\u0438\u0444\u0440\u043E\u0432\u0430\u0442\u044C", cls: "mod-cta" });
-    const cancelBtn = buttonContainer.createEl("button", { text: "\u274C \u041E\u0442\u043C\u0435\u043D\u0430" });
+    this.modalEl.addClass("vf-recording-modal");
+    this.modalEl.style.padding = "0";
+    this.modalEl.style.width = "fit-content";
+    this.modalEl.style.borderRadius = "24px";
+    this.modalEl.style.boxShadow = "0 10px 40px rgba(0,0,0,0.15)";
+    this.modalEl.style.border = "1px solid var(--background-modifier-border)";
+    contentEl.style.padding = "12px 16px";
+    contentEl.style.margin = "0";
+    this.mainContainer = contentEl.createEl("div");
+    this.mainContainer.style.display = "flex";
+    this.mainContainer.style.alignItems = "center";
+    this.mainContainer.style.gap = "16px";
+    const dot = this.mainContainer.createEl("div");
+    dot.style.width = "12px";
+    dot.style.height = "12px";
+    dot.style.borderRadius = "50%";
+    dot.style.backgroundColor = "#ff4d4d";
+    dot.style.animation = "vf-pulse 1.5s infinite";
+    this.timeDisplay = this.mainContainer.createEl("div", { text: "00:00" });
+    this.timeDisplay.style.fontSize = "1.3rem";
+    this.timeDisplay.style.fontWeight = "600";
+    this.timeDisplay.style.fontFamily = "monospace";
+    const visualizer = this.mainContainer.createEl("div");
+    visualizer.style.display = "flex";
+    visualizer.style.alignItems = "center";
+    visualizer.style.gap = "4px";
+    visualizer.style.height = "24px";
+    for (let i = 0; i < 5; i++) {
+      const bar = visualizer.createEl("div");
+      bar.style.width = "6px";
+      bar.style.height = "4px";
+      bar.style.borderRadius = "3px";
+      bar.style.backgroundColor = "#ff4d4d";
+      bar.style.transition = "height 0.1s ease";
+      this.visualizerBars.push(bar);
+    }
+    const separator = this.mainContainer.createEl("div");
+    separator.style.width = "1px";
+    separator.style.height = "24px";
+    separator.style.backgroundColor = "var(--background-modifier-border)";
+    separator.style.margin = "0 4px";
+    const stopBtn = this.mainContainer.createEl("button");
+    stopBtn.style.display = "flex";
+    stopBtn.style.alignItems = "center";
+    stopBtn.style.gap = "10px";
+    stopBtn.style.backgroundColor = "var(--text-normal)";
+    stopBtn.style.color = "var(--background-primary)";
+    stopBtn.style.borderRadius = "16px";
+    stopBtn.style.padding = "10px 20px";
+    stopBtn.style.border = "none";
+    stopBtn.style.fontSize = "1rem";
+    stopBtn.style.fontWeight = "600";
+    stopBtn.style.cursor = "pointer";
+    const squareIcon = stopBtn.createEl("div");
+    squareIcon.style.width = "12px";
+    squareIcon.style.height = "12px";
+    squareIcon.style.backgroundColor = "var(--background-primary)";
+    squareIcon.style.borderRadius = "2px";
+    stopBtn.createEl("span", { text: "\u0413\u043E\u0442\u043E\u0432\u043E" });
+    const cancelBtn = this.mainContainer.createEl("button");
+    cancelBtn.style.display = "flex";
+    cancelBtn.style.alignItems = "center";
+    cancelBtn.style.justifyContent = "center";
+    cancelBtn.style.width = "42px";
+    cancelBtn.style.height = "42px";
+    cancelBtn.style.borderRadius = "16px";
+    cancelBtn.style.backgroundColor = "var(--background-secondary-alt)";
+    cancelBtn.style.color = "var(--text-normal)";
+    cancelBtn.style.border = "none";
+    cancelBtn.style.cursor = "pointer";
+    cancelBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+    this.transcribingContainer = contentEl.createEl("div");
+    this.transcribingContainer.style.display = "none";
+    this.transcribingContainer.style.padding = "10px 20px";
+    this.transcribingContainer.style.textAlign = "center";
+    this.statusDisplay = this.transcribingContainer.createEl("div", { text: "\u23F3 \u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430 \u0432 Gemini..." });
+    this.statusDisplay.style.fontWeight = "bold";
+    this.statusDisplay.style.fontSize = "1.1rem";
+    if (!document.getElementById("vf-modal-styles")) {
+      const style = document.createElement("style");
+      style.id = "vf-modal-styles";
+      style.textContent = `
+                @keyframes vf-pulse {
+                    0% { opacity: 1; transform: scale(1); }
+                    50% { opacity: 0.5; transform: scale(0.8); }
+                    100% { opacity: 1; transform: scale(1); }
+                }
+                .vf-recording-modal .modal-close-button {
+                    display: none;
+                }
+                .vf-recording-modal.modal {
+                    background-color: var(--background-primary);
+                }
+            `;
+      document.head.appendChild(style);
+    }
     stopBtn.addEventListener("click", async () => {
       await this.stopAndTranscribe();
     });
     cancelBtn.addEventListener("click", async () => {
       await this.cancelRecording();
+    });
+    this.plugin.recorder.setAudioLevelCallback((level) => {
+      const maxHeights = [14, 20, 24, 20, 14];
+      for (let i = 0; i < this.visualizerBars.length; i++) {
+        const normalized = Math.min(1, Math.max(0, (level - 20) / 80));
+        const randomScale = 0.5 + Math.random() * 0.5;
+        const targetHeight = 4 + (maxHeights[i] - 4) * normalized * randomScale;
+        this.visualizerBars[i].style.height = `${targetHeight}px`;
+      }
     });
     this.startRecording();
   }
@@ -307,6 +437,7 @@ var RecordingModal = class extends import_obsidian3.Modal {
     if (this.timerInterval) {
       clearInterval(this.timerInterval);
     }
+    this.plugin.recorder.setAudioLevelCallback(null);
     const { contentEl } = this;
     contentEl.empty();
   }
@@ -332,14 +463,9 @@ var RecordingModal = class extends import_obsidian3.Modal {
     if (this.timerInterval) {
       clearInterval(this.timerInterval);
     }
-    this.timeDisplay.style.display = "none";
-    this.statusDisplay.setText("\u23F3 \u0418\u0434\u0435\u0442 \u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430 \u0432 Gemini... \u041F\u043E\u0436\u0430\u043B\u0443\u0439\u0441\u0442\u0430, \u043F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435.");
-    this.statusDisplay.style.color = "var(--text-accent)";
-    this.statusDisplay.style.textAlign = "center";
-    this.statusDisplay.style.fontWeight = "bold";
-    this.statusDisplay.style.fontSize = "1.2em";
-    const buttons = this.contentEl.querySelectorAll("button");
-    buttons.forEach((b) => b.style.display = "none");
+    this.plugin.recorder.setAudioLevelCallback(null);
+    this.mainContainer.style.display = "none";
+    this.transcribingContainer.style.display = "block";
     try {
       const base64Audio = await this.plugin.recorder.stopRecording();
       const result = await processAudioWithGemini(this.plugin.settings, base64Audio);
@@ -364,6 +490,7 @@ var RecordingModal = class extends import_obsidian3.Modal {
     if (this.timerInterval) {
       clearInterval(this.timerInterval);
     }
+    this.plugin.recorder.setAudioLevelCallback(null);
     try {
       await this.plugin.recorder.stopRecording();
     } catch (e) {
