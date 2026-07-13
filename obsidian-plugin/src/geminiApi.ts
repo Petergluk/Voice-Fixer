@@ -6,7 +6,7 @@ export async function processAudioWithGemini(apiKey: string, systemPrompt: strin
     }
 
     const model = modelName || "gemini-2.5-flash";
-    const url = \`https://generativelanguage.googleapis.com/v1beta/models/\${model}:generateContent?key=\${apiKey}\`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const payload = {
         system_instruction: {
@@ -40,7 +40,7 @@ export async function processAudioWithGemini(apiKey: string, systemPrompt: strin
         });
 
         if (response.status !== 200) {
-            throw new Error(\`API Error: \${response.text}\`);
+            throw new Error(`API Error: ${response.text}`);
         }
 
         const data = response.json;

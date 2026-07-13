@@ -92,7 +92,7 @@ export default class VoiceFixerPlugin extends Plugin {
         
         if (activeEditor) {
             const cursor = activeEditor.getCursor();
-            activeEditor.replaceRange(text + "\\n", cursor);
+            activeEditor.replaceRange(text + "\n", cursor);
         } else {
             new Notice('No active file to insert text. Transcribed text copied to clipboard.');
             navigator.clipboard.writeText(text);
