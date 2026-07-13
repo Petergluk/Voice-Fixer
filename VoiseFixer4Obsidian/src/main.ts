@@ -2,20 +2,17 @@ import { Plugin, Notice, Editor, MarkdownView } from 'obsidian';
 import { VoiceFixerSettings, DEFAULT_SETTINGS, VoiceFixerSettingTab } from './settings';
 import { AudioRecorder } from './audioRecorder';
 import { RecordingModal } from './recordingModal';
+import { processAudioWithGemini } from './geminiApi';
 
 export default class VoiceFixerPlugin extends Plugin {
     settings: VoiceFixerSettings;
     recorder: AudioRecorder;
-    statusBarItemEl: HTMLElement;
 
     async onload() {
         await this.loadSettings();
         this.recorder = new AudioRecorder();
 
         this.addSettingTab(new VoiceFixerSettingTab(this.app, this));
-
-        this.statusBarItemEl = this.addStatusBarItem();
-        this.statusBarItemEl.setText('🎤 Voice Fixer: Ready');
 
         this.addRibbonIcon('microphone', 'Voice Fixer: Start Recording', () => {
             this.startRecordingProcess();
@@ -58,6 +55,31 @@ export default class VoiceFixerPlugin extends Plugin {
         new RecordingModal(this.app, this).open();
     }
     
+    async processAudioBackground(base64Audio: string) {
+        new Notice('Аудио отправлено на расшифровку...');
+        const statusBarItem = this.addStatusBarItem();
+        statusBarItem.setText('⏳ Voice Fixer: Transcribing...');
+
+        try {
+            const result = await processAudioWithGemini(this.settings, base64Audio);
+            
+            try {
+                await navigator.clipboard.writeText(result);
+                new Notice('Текст скопирован в буфер (резервная копия).');
+            } catch (e) {
+                console.warn("Could not write to clipboard", e);
+            }
+            
+            this.insertText(result);
+            new Notice('Расшифровка успешно завершена и вставлена!');
+        } catch (error: any) {
+            new Notice(`Ошибка: ${error.message}`);
+            console.error(error);
+        } finally {
+            statusBarItem.remove();
+        }
+    }
+
     insertText(text: string) {
         const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
         

@@ -233,79 +233,8 @@ var AudioRecorder = class {
 };
 
 // src/recordingModal.ts
-var import_obsidian3 = require("obsidian");
-
-// src/geminiApi.ts
 var import_obsidian2 = require("obsidian");
-async function processAudioWithGemini(settings, base64Audio) {
-  var _a, _b, _c, _d, _e;
-  const keys = settings.apiKeys.split(/[\n,]+/).map((k) => k.trim()).filter((k) => k.length > 0);
-  if (keys.length === 0) {
-    throw new Error("API key is missing. Please set it in the plugin settings.");
-  }
-  let models = [settings.model];
-  if (settings.autoFallback) {
-    const DEFAULT_MODELS = ["gemini-3.5-flash", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-3.1-flash-lite"];
-    models = [settings.model, ...DEFAULT_MODELS.filter((m) => m !== settings.model)];
-  }
-  const systemPrompt = settings.promptMode === "concise" ? settings.sysPrompt_concise : settings.sysPrompt_default;
-  let lastError = null;
-  for (const model of models) {
-    for (const apiKey of keys) {
-      try {
-        if (settings.debugMode) console.log(`[Voice Fixer] Trying model ${model} with key starting with ${apiKey.substring(0, 5)}...`);
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const payload = {
-          system_instruction: { parts: [{ text: systemPrompt }] },
-          contents: [{
-            parts: [
-              { inline_data: { mime_type: "audio/webm", data: base64Audio } },
-              { text: "Please transcribe and correct this audio according to the system instructions." }
-            ]
-          }]
-        };
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => {
-            reject(new Error(`Request timed out after ${settings.maxWaitTime} minutes.`));
-          }, settings.maxWaitTime * 60 * 1e3);
-        });
-        const requestPromise = (0, import_obsidian2.requestUrl)({
-          url,
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        const response = await Promise.race([requestPromise, timeoutPromise]);
-        if (response.status !== 200) {
-          const errText = response.text || JSON.stringify(response.json);
-          if (response.status === 429 && settings.autoFallback) {
-            if (settings.debugMode) console.warn(`[Voice Fixer] Rate limit (429) on ${model}`);
-            lastError = new Error(`Rate limit on ${model}`);
-            continue;
-          }
-          throw new Error(`API Error ${response.status}: ${errText}`);
-        }
-        const data = response.json;
-        const text = (_e = (_d = (_c = (_b = (_a = data.candidates) == null ? void 0 : _a[0]) == null ? void 0 : _b.content) == null ? void 0 : _c.parts) == null ? void 0 : _d[0]) == null ? void 0 : _e.text;
-        if (text) {
-          if (settings.debugMode) console.log(`[Voice Fixer] Success with model ${model}`);
-          return text;
-        }
-        throw new Error("No transcription generated in the response.");
-      } catch (err) {
-        if (settings.debugMode) console.error(`[Voice Fixer] Error with model ${model} / key ${apiKey.substring(0, 5)}:`, err);
-        lastError = err;
-        if (!settings.autoFallback) {
-          throw err;
-        }
-      }
-    }
-  }
-  throw new Error(`All attempts failed. Last error: ${(lastError == null ? void 0 : lastError.message) || "Unknown error"}`);
-}
-
-// src/recordingModal.ts
-var RecordingModal = class extends import_obsidian3.Modal {
+var RecordingModal = class extends import_obsidian2.Modal {
   constructor(app, plugin) {
     super(app);
     this.isRecording = false;
@@ -388,13 +317,6 @@ var RecordingModal = class extends import_obsidian3.Modal {
     cancelBtn.style.border = "none";
     cancelBtn.style.cursor = "pointer";
     cancelBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
-    this.transcribingContainer = contentEl.createEl("div");
-    this.transcribingContainer.style.display = "none";
-    this.transcribingContainer.style.padding = "10px 20px";
-    this.transcribingContainer.style.textAlign = "center";
-    this.statusDisplay = this.transcribingContainer.createEl("div", { text: "\u23F3 \u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430 \u0432 Gemini..." });
-    this.statusDisplay.style.fontWeight = "bold";
-    this.statusDisplay.style.fontSize = "1.1rem";
     if (!document.getElementById("vf-modal-styles")) {
       const style = document.createElement("style");
       style.id = "vf-modal-styles";
@@ -453,7 +375,7 @@ var RecordingModal = class extends import_obsidian3.Modal {
         this.timeDisplay.setText(`${mins}:${secs}`);
       }, 1e3);
     } catch (err) {
-      new import_obsidian3.Notice("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043D\u0430\u0447\u0430\u0442\u044C \u0437\u0430\u043F\u0438\u0441\u044C. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0440\u0430\u0437\u0440\u0435\u0448\u0435\u043D\u0438\u044F \u043C\u0438\u043A\u0440\u043E\u0444\u043E\u043D\u0430.");
+      new import_obsidian2.Notice("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043D\u0430\u0447\u0430\u0442\u044C \u0437\u0430\u043F\u0438\u0441\u044C. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0440\u0430\u0437\u0440\u0435\u0448\u0435\u043D\u0438\u044F \u043C\u0438\u043A\u0440\u043E\u0444\u043E\u043D\u0430.");
       this.close();
     }
   }
@@ -464,23 +386,13 @@ var RecordingModal = class extends import_obsidian3.Modal {
       clearInterval(this.timerInterval);
     }
     this.plugin.recorder.setAudioLevelCallback(null);
-    this.mainContainer.style.display = "none";
-    this.transcribingContainer.style.display = "block";
     try {
       const base64Audio = await this.plugin.recorder.stopRecording();
-      const result = await processAudioWithGemini(this.plugin.settings, base64Audio);
-      try {
-        await navigator.clipboard.writeText(result);
-        new import_obsidian3.Notice("\u0422\u0435\u043A\u0441\u0442 \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D \u0432 \u0431\u0443\u0444\u0435\u0440 \u043E\u0431\u043C\u0435\u043D\u0430 (\u0440\u0435\u0437\u0435\u0440\u0432\u043D\u0430\u044F \u043A\u043E\u043F\u0438\u044F).");
-      } catch (e) {
-        console.warn("Could not write to clipboard", e);
-      }
-      this.plugin.insertText(result);
-      new import_obsidian3.Notice("\u0420\u0430\u0441\u0448\u0438\u0444\u0440\u043E\u0432\u043A\u0430 \u0443\u0441\u043F\u0435\u0448\u043D\u043E \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0430 \u0438 \u0432\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u0430!");
+      this.close();
+      this.plugin.processAudioBackground(base64Audio);
     } catch (error) {
-      new import_obsidian3.Notice(`\u041E\u0448\u0438\u0431\u043A\u0430: ${error.message}`);
+      new import_obsidian2.Notice(`\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u043F\u0438\u0441\u0438: ${error.message}`);
       console.error(error);
-    } finally {
       this.close();
     }
   }
@@ -495,10 +407,79 @@ var RecordingModal = class extends import_obsidian3.Modal {
       await this.plugin.recorder.stopRecording();
     } catch (e) {
     }
-    new import_obsidian3.Notice("\u0417\u0430\u043F\u0438\u0441\u044C \u043E\u0442\u043C\u0435\u043D\u0435\u043D\u0430.");
+    new import_obsidian2.Notice("\u0417\u0430\u043F\u0438\u0441\u044C \u043E\u0442\u043C\u0435\u043D\u0435\u043D\u0430.");
     this.close();
   }
 };
+
+// src/geminiApi.ts
+var import_obsidian3 = require("obsidian");
+async function processAudioWithGemini(settings, base64Audio) {
+  var _a, _b, _c, _d, _e;
+  const keys = settings.apiKeys.split(/[\n,]+/).map((k) => k.trim()).filter((k) => k.length > 0);
+  if (keys.length === 0) {
+    throw new Error("API key is missing. Please set it in the plugin settings.");
+  }
+  let models = [settings.model];
+  if (settings.autoFallback) {
+    const DEFAULT_MODELS = ["gemini-3.5-flash", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-3.1-flash-lite"];
+    models = [settings.model, ...DEFAULT_MODELS.filter((m) => m !== settings.model)];
+  }
+  const systemPrompt = settings.promptMode === "concise" ? settings.sysPrompt_concise : settings.sysPrompt_default;
+  let lastError = null;
+  for (const model of models) {
+    for (const apiKey of keys) {
+      try {
+        if (settings.debugMode) console.log(`[Voice Fixer] Trying model ${model} with key starting with ${apiKey.substring(0, 5)}...`);
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const payload = {
+          system_instruction: { parts: [{ text: systemPrompt }] },
+          contents: [{
+            parts: [
+              { inline_data: { mime_type: "audio/webm", data: base64Audio } },
+              { text: "Please transcribe and correct this audio according to the system instructions." }
+            ]
+          }]
+        };
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error(`Request timed out after ${settings.maxWaitTime} minutes.`));
+          }, settings.maxWaitTime * 60 * 1e3);
+        });
+        const requestPromise = (0, import_obsidian3.requestUrl)({
+          url,
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const response = await Promise.race([requestPromise, timeoutPromise]);
+        if (response.status !== 200) {
+          const errText = response.text || JSON.stringify(response.json);
+          if (response.status === 429 && settings.autoFallback) {
+            if (settings.debugMode) console.warn(`[Voice Fixer] Rate limit (429) on ${model}`);
+            lastError = new Error(`Rate limit on ${model}`);
+            continue;
+          }
+          throw new Error(`API Error ${response.status}: ${errText}`);
+        }
+        const data = response.json;
+        const text = (_e = (_d = (_c = (_b = (_a = data.candidates) == null ? void 0 : _a[0]) == null ? void 0 : _b.content) == null ? void 0 : _c.parts) == null ? void 0 : _d[0]) == null ? void 0 : _e.text;
+        if (text) {
+          if (settings.debugMode) console.log(`[Voice Fixer] Success with model ${model}`);
+          return text;
+        }
+        throw new Error("No transcription generated in the response.");
+      } catch (err) {
+        if (settings.debugMode) console.error(`[Voice Fixer] Error with model ${model} / key ${apiKey.substring(0, 5)}:`, err);
+        lastError = err;
+        if (!settings.autoFallback) {
+          throw err;
+        }
+      }
+    }
+  }
+  throw new Error(`All attempts failed. Last error: ${(lastError == null ? void 0 : lastError.message) || "Unknown error"}`);
+}
 
 // src/main.ts
 var VoiceFixerPlugin = class extends import_obsidian4.Plugin {
@@ -506,8 +487,6 @@ var VoiceFixerPlugin = class extends import_obsidian4.Plugin {
     await this.loadSettings();
     this.recorder = new AudioRecorder();
     this.addSettingTab(new VoiceFixerSettingTab(this.app, this));
-    this.statusBarItemEl = this.addStatusBarItem();
-    this.statusBarItemEl.setText("\u{1F3A4} Voice Fixer: Ready");
     this.addRibbonIcon("microphone", "Voice Fixer: Start Recording", () => {
       this.startRecordingProcess();
     });
@@ -541,6 +520,27 @@ var VoiceFixerPlugin = class extends import_obsidian4.Plugin {
       return;
     }
     new RecordingModal(this.app, this).open();
+  }
+  async processAudioBackground(base64Audio) {
+    new import_obsidian4.Notice("\u0410\u0443\u0434\u0438\u043E \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043E \u043D\u0430 \u0440\u0430\u0441\u0448\u0438\u0444\u0440\u043E\u0432\u043A\u0443...");
+    const statusBarItem = this.addStatusBarItem();
+    statusBarItem.setText("\u23F3 Voice Fixer: Transcribing...");
+    try {
+      const result = await processAudioWithGemini(this.settings, base64Audio);
+      try {
+        await navigator.clipboard.writeText(result);
+        new import_obsidian4.Notice("\u0422\u0435\u043A\u0441\u0442 \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D \u0432 \u0431\u0443\u0444\u0435\u0440 (\u0440\u0435\u0437\u0435\u0440\u0432\u043D\u0430\u044F \u043A\u043E\u043F\u0438\u044F).");
+      } catch (e) {
+        console.warn("Could not write to clipboard", e);
+      }
+      this.insertText(result);
+      new import_obsidian4.Notice("\u0420\u0430\u0441\u0448\u0438\u0444\u0440\u043E\u0432\u043A\u0430 \u0443\u0441\u043F\u0435\u0448\u043D\u043E \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0430 \u0438 \u0432\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u0430!");
+    } catch (error) {
+      new import_obsidian4.Notice(`\u041E\u0448\u0438\u0431\u043A\u0430: ${error.message}`);
+      console.error(error);
+    } finally {
+      statusBarItem.remove();
+    }
   }
   insertText(text) {
     const activeView = this.app.workspace.getActiveViewOfType(import_obsidian4.MarkdownView);

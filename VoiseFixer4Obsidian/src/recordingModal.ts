@@ -1,6 +1,5 @@
 import { App, Modal, Notice } from 'obsidian';
 import VoiceFixerPlugin from './main';
-import { processAudioWithGemini } from './geminiApi';
 
 export class RecordingModal extends Modal {
     plugin: VoiceFixerPlugin;
@@ -9,9 +8,7 @@ export class RecordingModal extends Modal {
     startTime: number = 0;
     timeDisplay: HTMLElement;
     visualizerBars: HTMLElement[] = [];
-    statusDisplay: HTMLElement;
     mainContainer: HTMLElement;
-    transcribingContainer: HTMLElement;
     
     constructor(app: App, plugin: VoiceFixerPlugin) {
         super(app);
@@ -112,15 +109,6 @@ export class RecordingModal extends Modal {
         cancelBtn.style.cursor = 'pointer';
         cancelBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
 
-        // Transcribing state container
-        this.transcribingContainer = contentEl.createEl('div');
-        this.transcribingContainer.style.display = 'none';
-        this.transcribingContainer.style.padding = '10px 20px';
-        this.transcribingContainer.style.textAlign = 'center';
-        this.statusDisplay = this.transcribingContainer.createEl('div', { text: '⏳ Обработка в Gemini...' });
-        this.statusDisplay.style.fontWeight = 'bold';
-        this.statusDisplay.style.fontSize = '1.1rem';
-
         if (!document.getElementById('vf-modal-styles')) {
             const style = document.createElement('style');
             style.id = 'vf-modal-styles';
@@ -200,26 +188,15 @@ export class RecordingModal extends Modal {
         }
         this.plugin.recorder.setAudioLevelCallback(null);
         
-        this.mainContainer.style.display = 'none';
-        this.transcribingContainer.style.display = 'block';
-
         try {
             const base64Audio = await this.plugin.recorder.stopRecording();
-            const result = await processAudioWithGemini(this.plugin.settings, base64Audio);
+            this.close(); // Close modal immediately
             
-            try {
-                await navigator.clipboard.writeText(result);
-                new Notice('Текст скопирован в буфер обмена (резервная копия).');
-            } catch (e) {
-                console.warn("Could not write to clipboard", e);
-            }
-            
-            this.plugin.insertText(result);
-            new Notice('Расшифровка успешно завершена и вставлена!');
+            // Pass to background processing
+            this.plugin.processAudioBackground(base64Audio);
         } catch (error: any) {
-            new Notice(`Ошибка: ${error.message}`);
+            new Notice(`Ошибка записи: ${error.message}`);
             console.error(error);
-        } finally {
             this.close();
         }
     }
