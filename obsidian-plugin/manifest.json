@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-voice-fixer",
+  "name": "Voice Fixer",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Smart audio transcription and text correction using Gemini AI.",
+  "author": "PuuNote",
+  "authorUrl": "",
+  "isDesktopOnly": false
+}
