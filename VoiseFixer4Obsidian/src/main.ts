@@ -49,8 +49,8 @@ export default class VoiceFixerPlugin extends Plugin {
     }
 
     async toggleRecording(editor?: Editor) {
-        if (!this.settings.apiKey) {
-            new Notice('Please set your Gemini API Key in the settings first!');
+        if (!this.settings.apiKeys) {
+            new Notice('Please set your Gemini API Keys in the settings first!');
             return;
         }
 
@@ -61,15 +61,13 @@ export default class VoiceFixerPlugin extends Plugin {
             try {
                 const base64Audio = await this.recorder.stopRecording();
                 const result = await processAudioWithGemini(
-                    this.settings.apiKey,
-                    this.settings.systemPrompt,
-                    this.settings.model,
+                    this.settings,
                     base64Audio
                 );
                 
                 this.insertText(result, editor);
                 new Notice('Transcription completed!');
-            } catch (error) {
+            } catch (error: any) {
                 new Notice(`Error: ${error.message}`);
                 console.error(error);
             } finally {
@@ -77,7 +75,7 @@ export default class VoiceFixerPlugin extends Plugin {
             }
         } else {
             try {
-                await this.recorder.startRecording();
+                await this.recorder.startRecording(this.settings.audioBitrate);
                 this.statusBarItemEl.setText('🔴 Voice Fixer: Recording...');
                 new Notice('Recording started...');
             } catch (error) {

@@ -2,10 +2,17 @@ export class AudioRecorder {
     private mediaRecorder: MediaRecorder | null = null;
     private audioChunks: Blob[] = [];
 
-    async startRecording(): Promise<void> {
+    async startRecording(bitrate: number = 32000): Promise<void> {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+            let options: MediaRecorderOptions = { mimeType: 'audio/webm' };
+            if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+                options = { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: bitrate };
+            } else {
+                options = { mimeType: 'audio/webm', audioBitsPerSecond: bitrate };
+            }
+            
+            this.mediaRecorder = new MediaRecorder(stream, options);
             this.audioChunks = [];
 
             this.mediaRecorder.ondataavailable = (event) => {
