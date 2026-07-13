@@ -94,8 +94,6 @@ export class VoiceFixerSettingTab extends PluginSettingTab {
                 .addOption('gemini-3-flash-preview', 'Gemini 3 Flash Preview')
                 .addOption('gemini-2.5-flash', 'Gemini 2.5 Flash')
                 .addOption('gemini-3.1-flash-lite', 'Gemini 3.1 Flash Lite')
-                .addOption('gemini-exp-1206', 'Gemini Exp 1206')
-                .addOption('gemini-2.0-flash-exp', 'Gemini 2.0 Flash Exp')
                 .setValue(this.plugin.settings.model)
                 .onChange(async (value) => {
                     this.plugin.settings.model = value;

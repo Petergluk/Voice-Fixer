@@ -22,7 +22,7 @@ __export(main_exports, {
   default: () => VoiceFixerPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian3 = require("obsidian");
+var import_obsidian4 = require("obsidian");
 
 // src/settings.ts
 var import_obsidian = require("obsidian");
@@ -86,7 +86,7 @@ var VoiceFixerSettingTab = class extends import_obsidian.PluginSettingTab {
       text.inputEl.rows = 4;
       text.inputEl.cols = 50;
     });
-    new import_obsidian.Setting(containerEl).setName("Model").setDesc("Gemini model to use first").addDropdown((dropdown) => dropdown.addOption("gemini-3.5-flash", "Gemini 3.5 Flash").addOption("gemini-3-flash-preview", "Gemini 3 Flash Preview").addOption("gemini-2.5-flash", "Gemini 2.5 Flash").addOption("gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite").addOption("gemini-exp-1206", "Gemini Exp 1206").addOption("gemini-2.0-flash-exp", "Gemini 2.0 Flash Exp").setValue(this.plugin.settings.model).onChange(async (value) => {
+    new import_obsidian.Setting(containerEl).setName("Model").setDesc("Gemini model to use first").addDropdown((dropdown) => dropdown.addOption("gemini-3.5-flash", "Gemini 3.5 Flash").addOption("gemini-3-flash-preview", "Gemini 3 Flash Preview").addOption("gemini-2.5-flash", "Gemini 2.5 Flash").addOption("gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite").setValue(this.plugin.settings.model).onChange(async (value) => {
       this.plugin.settings.model = value;
       await this.plugin.saveSettings();
     }));
@@ -192,6 +192,9 @@ var AudioRecorder = class {
   }
 };
 
+// src/recordingModal.ts
+var import_obsidian3 = require("obsidian");
+
 // src/geminiApi.ts
 var import_obsidian2 = require("obsidian");
 async function processAudioWithGemini(settings, base64Audio) {
@@ -261,22 +264,131 @@ async function processAudioWithGemini(settings, base64Audio) {
   throw new Error(`All attempts failed. Last error: ${(lastError == null ? void 0 : lastError.message) || "Unknown error"}`);
 }
 
+// src/recordingModal.ts
+var RecordingModal = class extends import_obsidian3.Modal {
+  constructor(app, plugin) {
+    super(app);
+    this.isRecording = false;
+    this.timerInterval = null;
+    this.startTime = 0;
+    this.plugin = plugin;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h2", { text: "Voice Fixer: \u0414\u0438\u043A\u0442\u043E\u0432\u043A\u0430", cls: "vf-modal-title" });
+    this.statusDisplay = contentEl.createEl("p", { text: "\u0418\u0434\u0435\u0442 \u0437\u0430\u043F\u0438\u0441\u044C... \u0413\u043E\u0432\u043E\u0440\u0438\u0442\u0435 \u0447\u0435\u0442\u043A\u043E.", cls: "vf-status-text" });
+    this.statusDisplay.style.color = "var(--text-muted)";
+    this.timeDisplay = contentEl.createEl("div", { text: "00:00", cls: "vf-timer" });
+    this.timeDisplay.style.fontSize = "2.5em";
+    this.timeDisplay.style.fontWeight = "bold";
+    this.timeDisplay.style.textAlign = "center";
+    this.timeDisplay.style.margin = "20px 0";
+    this.timeDisplay.style.color = "var(--text-accent)";
+    const buttonContainer = contentEl.createEl("div", { cls: "vf-button-container" });
+    buttonContainer.style.display = "flex";
+    buttonContainer.style.justifyContent = "center";
+    buttonContainer.style.gap = "15px";
+    buttonContainer.style.marginTop = "20px";
+    const stopBtn = buttonContainer.createEl("button", { text: "\u23F9 \u041E\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u044C \u0438 \u0420\u0430\u0441\u0448\u0438\u0444\u0440\u043E\u0432\u0430\u0442\u044C", cls: "mod-cta" });
+    const cancelBtn = buttonContainer.createEl("button", { text: "\u274C \u041E\u0442\u043C\u0435\u043D\u0430" });
+    stopBtn.addEventListener("click", async () => {
+      await this.stopAndTranscribe();
+    });
+    cancelBtn.addEventListener("click", async () => {
+      await this.cancelRecording();
+    });
+    this.startRecording();
+  }
+  onClose() {
+    if (this.isRecording) {
+      this.cancelRecording();
+    }
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+    }
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+  async startRecording() {
+    try {
+      await this.plugin.recorder.startRecording(this.plugin.settings.audioBitrate);
+      this.isRecording = true;
+      this.startTime = Date.now();
+      this.timerInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - this.startTime) / 1e3);
+        const mins = Math.floor(elapsed / 60).toString().padStart(2, "0");
+        const secs = (elapsed % 60).toString().padStart(2, "0");
+        this.timeDisplay.setText(`${mins}:${secs}`);
+      }, 1e3);
+    } catch (err) {
+      new import_obsidian3.Notice("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043D\u0430\u0447\u0430\u0442\u044C \u0437\u0430\u043F\u0438\u0441\u044C. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0440\u0430\u0437\u0440\u0435\u0448\u0435\u043D\u0438\u044F \u043C\u0438\u043A\u0440\u043E\u0444\u043E\u043D\u0430.");
+      this.close();
+    }
+  }
+  async stopAndTranscribe() {
+    if (!this.isRecording) return;
+    this.isRecording = false;
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+    }
+    this.timeDisplay.style.display = "none";
+    this.statusDisplay.setText("\u23F3 \u0418\u0434\u0435\u0442 \u043E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430 \u0432 Gemini... \u041F\u043E\u0436\u0430\u043B\u0443\u0439\u0441\u0442\u0430, \u043F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435.");
+    this.statusDisplay.style.color = "var(--text-accent)";
+    this.statusDisplay.style.textAlign = "center";
+    this.statusDisplay.style.fontWeight = "bold";
+    this.statusDisplay.style.fontSize = "1.2em";
+    const buttons = this.contentEl.querySelectorAll("button");
+    buttons.forEach((b) => b.style.display = "none");
+    try {
+      const base64Audio = await this.plugin.recorder.stopRecording();
+      const result = await processAudioWithGemini(this.plugin.settings, base64Audio);
+      try {
+        await navigator.clipboard.writeText(result);
+        new import_obsidian3.Notice("\u0422\u0435\u043A\u0441\u0442 \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D \u0432 \u0431\u0443\u0444\u0435\u0440 \u043E\u0431\u043C\u0435\u043D\u0430 (\u0440\u0435\u0437\u0435\u0440\u0432\u043D\u0430\u044F \u043A\u043E\u043F\u0438\u044F).");
+      } catch (e) {
+        console.warn("Could not write to clipboard", e);
+      }
+      this.plugin.insertText(result);
+      new import_obsidian3.Notice("\u0420\u0430\u0441\u0448\u0438\u0444\u0440\u043E\u0432\u043A\u0430 \u0443\u0441\u043F\u0435\u0448\u043D\u043E \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0430 \u0438 \u0432\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u0430!");
+    } catch (error) {
+      new import_obsidian3.Notice(`\u041E\u0448\u0438\u0431\u043A\u0430: ${error.message}`);
+      console.error(error);
+    } finally {
+      this.close();
+    }
+  }
+  async cancelRecording() {
+    if (!this.isRecording) return;
+    this.isRecording = false;
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+    }
+    try {
+      await this.plugin.recorder.stopRecording();
+    } catch (e) {
+    }
+    new import_obsidian3.Notice("\u0417\u0430\u043F\u0438\u0441\u044C \u043E\u0442\u043C\u0435\u043D\u0435\u043D\u0430.");
+    this.close();
+  }
+};
+
 // src/main.ts
-var VoiceFixerPlugin = class extends import_obsidian3.Plugin {
+var VoiceFixerPlugin = class extends import_obsidian4.Plugin {
   async onload() {
     await this.loadSettings();
     this.recorder = new AudioRecorder();
     this.addSettingTab(new VoiceFixerSettingTab(this.app, this));
     this.statusBarItemEl = this.addStatusBarItem();
     this.statusBarItemEl.setText("\u{1F3A4} Voice Fixer: Ready");
-    this.addRibbonIcon("microphone", "Toggle Voice Fixer Recording", () => {
-      this.toggleRecording();
+    this.addRibbonIcon("microphone", "Voice Fixer: Start Recording", () => {
+      this.startRecordingProcess();
     });
     this.addCommand({
-      id: "toggle-recording",
-      name: "Toggle Audio Recording",
-      editorCallback: (editor, view) => {
-        this.toggleRecording(editor);
+      id: "start-recording-modal",
+      name: "Start Recording (Open Modal)",
+      callback: () => {
+        this.startRecordingProcess();
       }
     });
     this.addCommand({
@@ -285,56 +397,37 @@ var VoiceFixerPlugin = class extends import_obsidian3.Plugin {
       editorCallback: async (editor) => {
         const selection = editor.getSelection();
         if (!selection) {
-          new import_obsidian3.Notice("No text selected");
+          new import_obsidian4.Notice("No text selected");
           return;
         }
-        new import_obsidian3.Notice("Fixing text via Gemini...");
-        new import_obsidian3.Notice("Text correction only is coming soon! Use the mic for now.");
+        new import_obsidian4.Notice("Text correction only is coming soon! Use the mic for now.");
       }
     });
   }
-  async toggleRecording(editor) {
+  startRecordingProcess() {
     if (!this.settings.apiKeys) {
-      new import_obsidian3.Notice("Please set your Gemini API Keys in the settings first!");
+      new import_obsidian4.Notice("Please set your Gemini API Keys in the settings first!");
       return;
     }
     if (this.recorder.isRecording()) {
-      this.statusBarItemEl.setText("\u23F3 Voice Fixer: Processing...");
-      new import_obsidian3.Notice("Recording stopped. Processing with Gemini...");
-      try {
-        const base64Audio = await this.recorder.stopRecording();
-        const result = await processAudioWithGemini(
-          this.settings,
-          base64Audio
-        );
-        this.insertText(result, editor);
-        new import_obsidian3.Notice("Transcription completed!");
-      } catch (error) {
-        new import_obsidian3.Notice(`Error: ${error.message}`);
-        console.error(error);
-      } finally {
-        this.statusBarItemEl.setText("\u{1F3A4} Voice Fixer: Ready");
-      }
-    } else {
-      try {
-        await this.recorder.startRecording(this.settings.audioBitrate);
-        this.statusBarItemEl.setText("\u{1F534} Voice Fixer: Recording...");
-        new import_obsidian3.Notice("Recording started...");
-      } catch (error) {
-        new import_obsidian3.Notice("Could not start recording. Check microphone permissions.");
-        console.error(error);
-      }
+      new import_obsidian4.Notice("Already recording!");
+      return;
     }
+    new RecordingModal(this.app, this).open();
   }
-  insertText(text, editor) {
-    var _a;
-    const activeEditor = editor || ((_a = this.app.workspace.getActiveViewOfType(import_obsidian3.MarkdownView)) == null ? void 0 : _a.editor);
-    if (activeEditor) {
-      const cursor = activeEditor.getCursor();
-      activeEditor.replaceRange(text + "\n", cursor);
+  insertText(text) {
+    const activeView = this.app.workspace.getActiveViewOfType(import_obsidian4.MarkdownView);
+    if (activeView) {
+      const editor = activeView.editor;
+      const cursor = editor.getCursor();
+      const line = editor.getLine(cursor.line);
+      const prefix = line.length > 0 && cursor.ch > 0 ? "\n\n" : "";
+      const textToInsert = prefix + text + "\n\n";
+      editor.replaceRange(textToInsert, cursor);
+      const newCursor = editor.offsetToPos(editor.posToOffset(cursor) + textToInsert.length);
+      editor.setCursor(newCursor);
     } else {
-      new import_obsidian3.Notice("No active file to insert text. Transcribed text copied to clipboard.");
-      navigator.clipboard.writeText(text);
+      new import_obsidian4.Notice("No active file to insert text. Transcribed text is in your clipboard!");
     }
   }
   async loadSettings() {
