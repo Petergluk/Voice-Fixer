@@ -1,33 +1,39 @@
-# PuuNote Plugin Sandbox
+# PuuNote Plugin Sandbox & Ecosystem
 
+This repository contains a standalone sandbox environment designed specifically to help AI coding assistants (like Cursor, Claude, AI Studio, etc.) write and test plugins for PuuNote, as well as standalone extensions (like Chrome extensions or Obsidian plugins).
 
-This directory contains a standalone sandbox environment designed specifically to help AI coding assistants (like Cursor, Claude, ChatGPT, etc.) write and test plugins for PuuNote.
+## Структура проекта (Project Structure)
 
-## Why this Sandbox exists?
+В этом репозитории собраны несколько взаимосвязанных проектов и утилит для расширения экосистемы PuuNote:
 
-PuuNote is a complex React application with its own state management, tree structures, and API constraints. When you are writing a new plugin using an AI model, providing the full original codebase might be overwhelming or unnecessary. 
+### 1. `src/` (PuuNote Web Plugin Sandbox)
+- **Зачем:** Это песочница (React + Vite) для создания веб-плагинов под основное приложение PuuNote.
+- **Где:** Исходный код песочницы лежит в `src/`. Внутри `src/plugins/` вы можете создавать новые плагины, тестировать их изолированно через мок `registry.ts` и `App.tsx`.
+- **Запуск:** `npm run dev` из корня проекта.
 
-Instead, this sandbox provides:
-1. **A mock `pluginApi.ts`**: Simulating the plugin registration and behavior inside the main app.
-2. **A clean `App.tsx` container**: Rendering a UI layout identical to the main app specifically to render the test plugin components, actions, header buttons, and UI overlays.
-3. **Copy of core documentation**: The `AGENTS.md` and `docs/PLUGIN_API.md` files are placed here so the AI knows all constraints, API models, and data structures.
+### 2. `VoiseFixer4Obsidian/` (Obsidian Plugin)
+- **Зачем:** Версия плагина Voice Fixer для Obsidian. Позволяет диктовать текст, отправлять аудио в Gemini для транскрипции и очистки от словесного мусора, после чего вставлять готовый результат прямо в заметки Obsidian.
+- **Где:** Исходный код в `VoiseFixer4Obsidian/src/`. 
+- **Запуск:** В папке `VoiseFixer4Obsidian` выполнить `npm run build` (создаст `main.js`).
 
-## How to use
+### 3. `chrome-extension/` (Chrome Extension)
+- **Зачем:** Версия плагина Voice Fixer (или других инструментов) в виде браузерного расширения для использования возможностей диктовки с ИИ на любых веб-сайтах.
+- **Где:** Исходный код расширения.
 
-1. Give the AI context to this folder (e.g., add `/plugin-sandbox` to context in Cursor or ZIP the folder).
+### 4. `docs/` & `AGENTS.md` (Документация и инструкции)
+- **`AGENTS.md`**: Глобальные инструкции для AI-ассистентов, описывающие, какие модели использовать (fallback chain), устаревшие модели (Gemini 1.5, 2.0 отключены), и правила стилизации UI.
+- **`docs/PLUGIN_API.md`**: Документация по Plugin API для песочницы PuuNote.
+
+### 5. `public/`
+- **Зачем:** Публичная папка для статики веб-песочницы. Сюда же складываются собранные `.zip` архивы (например, `VoiseFixer4Obsidian.zip`), чтобы их можно было легко скачать через браузер, если приложение запущено в облачной среде (например, AI Studio).
+
+## How to use the Sandbox
+
+1. Give the AI context to this folder.
 2. Prompt the AI: *"Create a new PuuNote plugin [name] in the `src/plugins/` directory of this sandbox. Follow the API from `docs/PLUGIN_API.md` and use `utils/aiModels.ts` to access AI if needed."*
-3. The AI will write the plugin inside `plugin-sandbox/src/plugins/your-plugin/`.
-4. You can run the sandbox independently using:
+3. You can run the sandbox independently using:
    ```bash
    npm install
    npm run dev
    ```
-5. Once your plugin behaves as expected in the UI dummy elements shown in the sandbox, simply copy the `your-plugin` directory over to `src/plugins/` in the main PuuNote repository.
-
-## Sandbox Structure
-
-- `/src/App.tsx` - Emulates the main application UI, showing Header, Main Space (Card), and Footer where hooks and plugin actions register automatically.
-- `/src/plugins/registry.ts` - The mock Plugin API. Exposes the types and registry dummy methods similar to what the main app uses.
-- `/src/utils/aiModels.ts` - A mocked utility replicating the AI module detailed in `AGENTS.md` for proper model-agnostic text generative capabilities within your plugins.
-- `/docs/PLUGIN_API.md` - Complete reference of the Plugin implementation interface.
-- `/AGENTS.md` - Documentation detailing AI and component styles conventions.
+4. Once your plugin behaves as expected, copy the `your-plugin` directory over to `src/plugins/` in the main PuuNote repository.
